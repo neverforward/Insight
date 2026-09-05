@@ -1,11 +1,11 @@
 {
   "format_version": 3,
   "format_uuid": "289f771f-2c9a-4d73-9f3f-8492495a924d",
-  "tooth": "github.com/LiteLDev/levilamina-mod-template",
+  "tooth": "neverforward/Insight",
   "version": "0.0.0",
   "info": {
-    "name": "My Mod",
-    "description": "Description of my mod",
+    "name": "Insight",
+    "description": "A lightweight, Jade‑like info display mod for Bedrock Edition that shows you exactly what you are looking at.",
     "tags": [
       "platform:levilamina",
       "type:mod"
@@ -28,8 +28,8 @@
           "placements": [
             {
               "type": "dir",
-              "src": "my-mod/",
-              "dest": "plugins/my-mod/"
+              "src": "Insight/",
+              "dest": "plugins/Insight/"
             }
           ]
         }
@@ -62,8 +62,8 @@
           "placements": [
             {
               "type": "dir",
-              "src": "my-mod/",
-              "dest": "mods/my-mod/"
+              "src": "Insight/",
+              "dest": "mods/Insight/"
             }
           ]
         }
