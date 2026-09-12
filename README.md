@@ -1,34 +1,37 @@
-# Insight
+![Insight](https://socialify.git.ci/neverforward/Insight/image?custom_description=A+lightweight+info+display+mod+for+Bedrock+Edition+that+shows+you+exactly+what+you+are+looking+at.&description=1&font=Inter&forks=1&issues=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fneverforward%2FInsight%2Frefs%2Fheads%2Fmain%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Plus&pulls=1&stargazers=1&theme=Auto)
 
-一个Minecraft 基岩版（LeviLamina 26.20.*）的**信息显示**模组：实时显示玩家准星所指方块的信息（名称、类型、坐标、距离、容器内容、方块状态……）。
+[![Static Badge](https://img.shields.io/badge/English-inactive?style=for-the-badge)
+](README.md) ![Static Badge](https://img.shields.io/badge/简体中文-informational?style=for-the-badge) ![GitHub License](https://img.shields.io/github/license/neverforward/Insight?style=for-the-badge)
+![GitHub Tag](https://img.shields.io/github/v/tag/neverforward/Insight?style=for-the-badge)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/neverforward/Insight/build.yml?style=for-the-badge)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/y/neverforward/Insight?style=for-the-badge)
 
-- **服务端**：按固定节奏读取每位在线玩家面向的方块，把结果**只发送给对应的那个玩家**，频道可选（actionbar / tip / popup / 系统消息 / 聊天栏）。
-- **客户端**：读取**本地玩家**面向的方块，使用ImGUI显示信息，可在服务器中使用。
-
-## 安装
-
-- 服务端: `lip install github.com/neverforward/Insight`
-- 客户端: `lip install github.com/neverforward/Insight#client`
-
-首次启动会自动生成配置文件 `plugins/Insight/config/config.json`（服务端）或
-`mods/Insight/config/config.json`（客户端），包含全部默认值。执行
-`/insight reload`（需OP）即可热重载；也可以直接在游戏里用 `/insight set <选项> <值>` 修改。
+ **info display** mod for Minecraft Bedrock Edition (LeviLamina 26.20.*): it shows what you are looking at in real time - name, type, coordinates, distance, container contents, block states, ...
 
 
-## 指令
+## Installation
 
-`/insight` 在服务端与客户端都可用（客户端在聊天栏输入同样生效）。
+- Server: `lip install github.com/neverforward/Insight`
+- Client: `lip install github.com/neverforward/Insight#client`
+
+The first start creates the configuration file `plugins/Insight/config/config.json` (server) or
+`mods/Insight/config/config.json` (client) with every default value. Run `/insight reload` (OP) to
+hot-reload it, or change values in game with `/insight set <option> <value>`.
+
+## Commands
+
+`/insight` works on both sides (on the client you type it into the chat like any other command).
 
 ```
-/insight toggle          开/关你自己的显示（仅服务端；会持久化）
-/insight on | off        同上（仅服务端）
-/insight status          查看当前状态（开关/间隔/距离/频道或锚点/extras）
-/insight reload          重新读取配置文件（需要 OP/管理员）
-/insight set <选项> <值>   游戏内直接改配置并保存（需要 OP/管理员）
+/insight toggle          toggle your own display (server only; persisted)
+/insight on | off        same as above (server only)
+/insight status          show the current state (switch/interval/distance/channel or anchor/extras)
+/insight reload          re-read the configuration file (OP / operator)
+/insight set <option> <value>   change a setting in game and save it (OP / operator)
 ```
 
-`<选项>` 输入时游戏会给出补全候选，就是配置里的那些名字（`format`、`maxWidth`、
-`extras.chest`…）。取值写错会提示可用取值，例如：
+`<option>` is completed by the game: the candidates are exactly the configuration names
+(`format`, `maxWidth`, `extras.chest`, ...). A bad value reports the accepted ones, for example:
 
 ```
 /insight set channel actionbar
@@ -37,40 +40,41 @@
 /insight set extras.chest false
 ```
 
-服务端每位玩家的开关保存在模组数据目录下的键值数据库里（`plugins/Insight/data/players/`），
-服务器重启后依然有效；只有在玩家把开关改成**非默认值**时才写入记录。
+On the server each player's switch is stored in a key-value database inside the mod's data
+directory (`plugins/Insight/data/players/`), so it survives server restarts; an entry is only
+written when a player changes the switch away from its **default** value.
 
-## 配置
+## Configuration
 
 ```jsonc
 {
-    "version": 1,                  // 结构版本；升级模组时旧配置会自动合并，无需手动迁移
+    "version": 1,                  // schema version; older files are merged automatically
 
-    "enabled": true,               // 总开关
-    "enabledByDefault": true,      // 玩家默认开启；玩家可用 /insight 单独切换
+    "enabled": true,               // master switch
+    "enabledByDefault": true,      // default for players; they can toggle it with /insight
 
-    "maxDistance": 16.0,           // 射线最大距离（格）
-    "intervalTicks": 4,            // 采样间隔（20 tick = 1 秒；4 = 0.2s）
-    "passThroughLiquids": true,    // 视线是否穿透水/岩浆
-    "showEmpty": false,            // 看向空气/超距时是否仍显示
-    "emptyText": "",               // showEmpty=true 时显示的文本
+    "maxDistance": 16.0,           // maximum ray distance (blocks)
+    "intervalTicks": 4,            // sampling interval (20 ticks = 1s; 4 = 0.2s)
+    "passThroughLiquids": true,    // look through water / lava
+    "showEmpty": false,            // keep showing something when aiming at air / beyond range
+    "emptyText": "",               // text used while showEmpty is true
 
-    "format": "{blockName}\n§7{blockType} §8· §7{x}, {y}, {z}\n{extras}",  // 显示格式
+    "format": "{blockName}\n§7{blockType} §8· §7{x}, {y}, {z}\n{extras}",  // display format
 
-    "overrides": [                 // 按方块类型覆盖显示格式（类型 id 子串匹配，首个命中生效）
-        { "match": "minecraft:chest", "format": "{blockName}\n§e箱子\n{extras}" }
+    "overrides": [                 // per-block-type format overrides (type id substring, first match wins)
+        { "match": "minecraft:chest", "format": "{blockName}\n§eChest\n{extras}" }
     ],
 
-    "extras": {                    // 方块专属信息（在 format 里用 {extras} 显示）
-        "enabled": true,           // 总开关
-        "chest": true,             // 容器占用：物品 12/27
-        "furnace": true,           // 熔炉/高炉/烟熏炉 槽位占用
-        "brewing": true,           // 酿造台槽位占用
-        "redstone": true,          // 红石信号强度
-        "misc": true               // 方块状态与方块实体类信息
+    "extras": {                    // per-block extras (shown where {extras} appears)
+        "enabled": true,           // master switch
+        "chest": true,             // container occupancy: items 12/27
+        "furnace": true,           // furnace / blast furnace / smoker slots
+        "brewing": true,           // brewing stand slots
+        "redstone": true,          // redstone signal strength
+        "misc": true               // block states and block-entity info
     },
 
-    "entityEnabled": true,         // 准星指向实体时也显示
+    "entityEnabled": true,         // also show entities under the crosshair
     "entityFormat": "{entityName}\n§7{entityType} §8· §7{health}/{maxHealth}",
 
     "server": {
@@ -80,93 +84,101 @@
     "client": {
         "showOverlay": true,
         "anchor": "bottom_center", // top_left/top_center/top_right/middle_left/center/middle_right/bottom_left/bottom_center/bottom_right
-        "offsetX": 0.0,            // 屏幕宽度比例的水平偏移（正=右）
-        "offsetY": 0.0,            // 屏幕高度比例的纵向偏移（正=上）
-        "fontSize": 1.0,           // 字号倍率
-        "background": true,        // 文字后的半透明黑底
-        "backgroundAlpha": 0.45,   // 面板透明度 0~1
-        "shadow": true,            // 文字阴影
-        "textColor": "ffffff",     // 无颜色代码时的文字颜色（RRGGBB）
-        "maxWidth": 0.0,           // 最大面板宽度占屏比，0 = 不限（超长自动换行）
-        "hideOverlayInGui": true,  // 打开背包/箱子等界面时隐藏面板
-        "overlayOnRemote": "off",  // off=联机时隐藏本地面板（改由服务端推送）；on=联机也画
-        "language": "auto"         // auto 使用客户端当前 UI 语言
+        "offsetX": 0.0,            // horizontal offset as a fraction of the screen width (positive = right)
+        "offsetY": 0.0,            // vertical offset as a fraction of the screen height (positive = up)
+        "fontSize": 1.0,           // font scale
+        "background": true,        // translucent black panel behind the text
+        "backgroundAlpha": 0.45,   // panel opacity 0..1
+        "shadow": true,            // text shadow
+        "textColor": "ffffff",     // text colour (RRGGBB) when no colour code is used
+        "maxWidth": 0.0,           // max panel width as a fraction of the screen, 0 = unlimited (long lines wrap)
+        "hideOverlayInGui": true,  // hide the panel while an inventory / container screen is open
+        "overlayOnRemote": "off",  // off = hide the local panel online (the server pushes it); on = always draw
+        "language": "auto"         // auto = use the client's current UI language
     }
 }
 ```
 
-> 如果需要详细日志（方块的每个状态、容器槽位判定、活塞/陶罐诊断等）要将`PreLoaderConfig.json`中的`logLevel`改为`4`
+> For detailed logs (every block state, container slot decisions, piston / decorated pot
+> diagnostics, ...) set `logLevel` to `4` in `PreLoaderConfig.json`.
 
-### format 占位符
+### format placeholders
 
-| 占位符 | 含义 | 示例 |
+| Placeholder | Meaning | Example |
 | --- | --- | --- |
-| `{blockType}` | 方块类型 id | `minecraft:stone` |
-| `{blockName}` | 本地化方块名 | `石头` / `Stone` |
-| `{blockKey}` | 翻译键 | `tile.stone.stone` |
-| `{x}` `{y}` `{z}` | 方块整型坐标 | `10` |
-| `{dist}` | 距离（格） | `3.5` |
-| `{dim}` | 维度 | `overworld` |
-| `{direction}` | 方块朝向（该方块没有朝向状态时为空） | `北` / `north`、`上` / `up` |
-| `{light}` | 该位置的光照等级 0–15（不可用时为空） | `12` |
-| `{emission}` | 方块**自身发出**的光照 0–15 | `15`（萤石）/ `0`（石头） |
-| `{extras}` | 方块专属信息行（多行自动拼接，无数据时为空） | `物品 12/27` |
+| `{blockType}` | block type id | `minecraft:stone` |
+| `{blockName}` | localized block name | `Stone` / `石头` |
+| `{blockKey}` | translation key | `tile.stone.stone` |
+| `{x}` `{y}` `{z}` | integer block coordinates | `10` |
+| `{dist}` | distance (blocks) | `3.5` |
+| `{dim}` | dimension | `overworld` |
+| `{direction}` | facing of the block (empty when it has no facing state) | `north` / `北`, `up` / `上` |
+| `{light}` | light level at that position, 0-15 (empty when unavailable) | `12` |
+| `{emission}` | light emitted by the block **itself**, 0-15 | `15` (glowstone) / `0` (stone) |
+| `{extras}` | per-block extra lines (joined automatically, empty when there is no data) | `Items 12/27` |
 
-颜色：直接写 `§` 码，或写 `&` 码（`&a &l &r`…），`&&` 表示字面 `&`。
-服务端频道里 `§` 颜色码原生生效；客户端面板支持 `§0-9a-f` 颜色与 `§r` 重置，
-`§l/k/m/n/o` 这类修饰码在面板上不生效。
+Colours: use `§` codes directly, or `&` codes (`&a &l &r`, ...); `&&` is a literal `&`.
+On server channels `§` codes work natively; the client panel supports `§0-9a-f` colours and `§r`
+reset, while modifier codes such as `§l/k/m/n/o` have no effect there.
 
-#### 额外信息（extras）
+#### Extras
 
-在 `format` 里放 `{extras}` 即可把额外信息行拼进面板（放中间或末尾都行）。
+Put `{extras}` anywhere in `format` to append the extra lines (middle or end, either is fine).
 
-| 开关 | 显示内容 |
+| Switch | Contents |
 | --- | --- |
-| `extras.chest` | 容器占用：`物品 12/27`（箱子/陷阱箱/桶/漏斗/投掷器/发射器/铜箱子/潜影盒/合成器/雕纹书架/讲台/陶罐，以及箱子矿车/漏斗矿车/运输船） |
-| `extras.furnace` | 熔炉/高炉/烟熏炉：`槽位 1/3` |
-| `extras.brewing` | 酿造台：`槽位 x/5` |
-| `extras.redstone` | 比较器、红石线/中继器：`信号强度 12` |
-| `extras.misc` | 方块状态与方块实体类信息，见下表 |
+| `extras.chest` | container occupancy: `Items 12/27` (chest/trapped chest/barrel/hopper/dropper/dispenser/copper chest/shulker box/crafter/chiseled bookshelf/lectern/decorated pot, plus chest minecart, hopper minecart and boat with chest) |
+| `extras.furnace` | furnace / blast furnace / smoker: `Slots 1/3` |
+| `extras.brewing` | brewing stand: `Slots x/5` |
+| `extras.redstone` | comparator, redstone wire / repeater, pressure plate, target: `Signal 12` |
+| `extras.misc` | block states and block-entity info, see below |
 
-`extras.misc` 覆盖的内容：
+What `extras.misc` covers:
 
-- 门 / 活板门 / 栅栏门：`状态 开/关`（充能时追加一行）
-- 压力板 / 按钮：`状态 按下/未按下`、`按下/弹起`；拉杆：`状态 开/关`；绊线钩：`连接`、`充能`
-- 活塞 / 粘性活塞：`状态 已伸出/未伸出`；活塞臂：`活塞 普通/粘性` + `状态 已伸出`
-- 侦测器：`状态 激活/未激活`；合成器：`状态 合成中/空闲`、`已触发`、`禁用槽位 n`
-- 标靶：红石强度；海泡菜：`数量 n`
-- 蛋糕：`剩余 n/7`；堆肥桶：`堆肥 n/8`；音符盒：`音调 n/25`
-- 附魔台：`附魔等级 n`（书架功率，上限 15）
-- 旗帜：`图案 n`；陶罐：`陶片 n/4`；展示架：`物品 n/3`；物品展示框：`展示 <物品>`
-- 讲台：`书 <物品>`、`页码 p/total`
-- 盔甲架（实体）：已穿戴的头盔/胸甲/护腿/靴子、主手与副手物品。
+- Doors / trapdoors / fence gates: `State open/closed` (a `Powered` line is added while powered)
+- Buttons: `State pressed/released`; levers: `State open/closed`; tripwire hooks: `Connected`, `Powered`
+- Observers: `Powered yes/no`
+- Pistons / sticky pistons: `State extended/retracted` (and `extending` / `retracting` while animating); piston arms: `Piston normal/sticky` + `State extended`
+- Crafters: `State crafting/idle`, `Triggered`, `Disabled slots n`
+- Sea pickles: `Count n`
+- Cake: `Slices n/7`; composters: `Compost n/8`; note blocks: `Note n/25`
+- Enchanting tables: `Enchant power n` (bookshelf power, capped at 15)
+- Banners: `Patterns n`; decorated pots: `Items <item> ×n` and `Sherds n/4`; shelves: `Items n/3`; item frames: `Displayed item <item>`
+- Lecterns: `Book <item>`, `Page p/total`
+- Equipment of any entity that carries some (armor stands, players, armored mobs): `Helmet` / `Chestplate` / `Leggings` / `Boots`, `Main hand`, `Off hand`
 
-**数据完整度**：容器与方块实体类信息在**服务端和本地单机**最完整；客户端连远程服务器时读不到
-别人容器的内容，这类行会留空而不会报错。暂未覆盖：告示牌/命令方块等文本内容、刷怪笼、
-作物生长阶段等。
+**Data completeness**: container and block-entity info is complete on the **server and in local
+single-player**; a client connected to a remote server cannot read other players' containers, so
+those lines stay empty instead of failing. Not covered yet: text contents (signs, command blocks),
+mob spawners, crop growth stages.
 
+## Language
 
-## 语言
+- Block and item names follow the **player's own language**: they are looked up in the engine's
+  localization tables, which already merge the vanilla pack with every resource pack the player
+  enabled, then fall back to English and finally to the raw type id.
+- The panel labels and command feedback ship as `lang/en.json` and `lang/zh_cn.json` (the file name
+  is the locale code, lowercase). Drop another `<locale>.json` into `lang/` to add a language;
+  missing entries fall back to English and never turn into blank text.
 
-- 方块名、容器内物品名跟随玩家自己的语言
+## Building
 
-## 构建
+1. Install [xmake](https://xmake.io/), clang-cl and VS2022+
 
-1. 安装 [xmake](https://xmake.io/zh/) 、clang-cl 与 VS2022+
-
-2. 构建模组
+2. Build the mod
 ```bash
-# 服务端（BDS）
+# server (BDS)
 xmake f -y -p windows -a x64 -m release --target_type=server
 xmake
 
-# 客户端（GDK / LeviLamina 客户端）
+# client (GDK / LeviLamina client)
 xmake f -y -p windows -a x64 -m release --target_type=client
 xmake
 ```
 
-产物输出到 `bin/Insight/`，整个目录即为上面「安装」里要放置的内容。
+The artifacts are written to `bin/Insight/` - that whole folder is what you place as described in
+"Installation".
 
-# 许可证
+# License
 
 MIT © neverforward
