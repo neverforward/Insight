@@ -11,15 +11,24 @@ option_end()
 -- add_requires("levilamina x.x.x") for a specific version
 -- add_requires("levilamina develop") to use develop version
 -- please note that you should add bdslibrary yourself if using dev version
-add_requires("levilamina", {configs = {target_type = get_config("target_type")}})
+add_requires("levilamina 26.20.*", {configs = {target_type = get_config("target_type")}})
 
 add_requires("levibuildscript")
+
+-- ImGui HUD overlay (client only): Dear ImGui + minhook for the DXGI
+-- Present hook that renders the info panel with a CJK-capable font. The
+-- vanilla UI text pipeline cannot render Chinese names reliably on this GDK
+-- build, so the client overlay draws through ImGui instead.
+if (get_config("target_type") or "server") == "client" then
+    add_requires("imgui v1.91.9", {configs = {shared = false, win32 = true, dx11 = true, no_demo_windows = true}})
+    add_requires("minhook", {configs = {shared = false}})
+end
 
 if not has_config("vs_runtime") then
     set_runtimes("MD")
 end
 
-target("Insight") -- Change this to your mod name.
+target("Insight")
     add_rules("@levibuildscript/linkrule")
     add_rules("@levibuildscript/modpacker")
     if is_plat("windows") then
@@ -45,13 +54,34 @@ target("Insight") -- Change this to your mod name.
     set_kind("shared")
     set_languages("c++20")
     set_symbols("debug")
-    add_headerfiles("src/**.h")
-    add_files("src/**.cpp")
     add_includedirs("src")
-    if is_config("target_type", "server") then
-    --  add_includedirs("src-server")
-    --  add_files("src-server/**.cpp")
+
+    -- Platform selection. Common code lives in src/, platform code in
+    -- src-server/ (BDS) or src-client/ (GDK client / LeviLamina client).
+    local target_type = get_config("target_type") or "server"
+    if target_type == "client" then
+        add_defines("INSIGHT_TARGET_CLIENT")
+        add_includedirs("src-client")
+        add_packages("imgui", "minhook")
+        add_syslinks("user32", "d3d11", "d3d12", "dxgi")
+        add_headerfiles("src/**.h", "src-client/**.h")
+        add_files("src/**.cpp", "src-client/**.cpp")
     else
-    --  add_includedirs("src-client")
-    --  add_files("src-client/**.cpp")
+        add_defines("INSIGHT_TARGET_SERVER")
+        add_includedirs("src-server")
+        add_headerfiles("src/**.h", "src-server/**.h")
+        add_files("src/**.cpp", "src-server/**.cpp")
     end
+
+    -- Messages: lang/<locale>.json is loaded at runtime through
+    -- ll::i18n::getInstance().load(getSelf().getLangDir()). The modpacker rule
+    -- only copies the dll + manifest, so the folder is copied next to it here.
+    after_build(function (target)
+        local langdir = path.join(os.projectdir(), "lang")
+        if os.isdir(langdir) then
+            local outdir = path.join(os.projectdir(), "bin", target:name(), "lang")
+            os.mkdir(outdir)
+            os.cp(path.join(langdir, "*.json"), outdir)
+            cprint("${bright green}[Mod Packer]: ${reset}language files -> " .. outdir)
+        end
+    end)

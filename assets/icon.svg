@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title desc">
+  <title id="title">Insight</title>
+  <desc>A block with its info lines and the mod name: what you are looking at, explained.</desc>
+
+  <!-- HUD panel background -->
+  <rect x="0" y="0" width="256" height="256" rx="44" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+
+  <!-- the block under the crosshair (isometric stone cube), centred together
+       with the info lines: the pair spans x 42..214, i.e. centre x = 128 -->
+  <g stroke="#0d1117" stroke-width="3" stroke-linejoin="round">
+    <path d="M86 56 L130 78 L86 100 L42 78 Z" fill="#c7d1da"/>
+    <path d="M42 78 L86 100 L86 146 L42 124 Z" fill="#93a1ad"/>
+    <path d="M130 78 L86 100 L86 146 L130 124 Z" fill="#6b7883"/>
+  </g>
+
+  <!-- info lines, like the panel text: one bright value, two dim labels -->
+  <g>
+    <rect x="150" y="73" width="64" height="10" rx="5" fill="#e6edf3"/>
+    <rect x="150" y="91" width="44" height="10" rx="5" fill="#8b949e"/>
+    <rect x="150" y="109" width="56" height="10" rx="5" fill="#8b949e"/>
+  </g>
+
+  <!-- project name: hand-drawn 5x7 pixel lettering (no font involved), kept in
+       a grey between the label bars and the value white: readable, but still
+       clearly secondary to the block and the value bar.
+       unit 4px, letter pitch 24px, spans x 46..210 so it stays centred -->
+  <path d="M46 168h20v4h-20zM54 172h4v4h-4zM54 176h4v4h-4zM54 180h4v4h-4zM54 184h4v4h-4zM54 188h4v4h-4zM46 192h20v4h-20zM70 168h4v4h-4zM86 168h4v4h-4zM70 172h8v4h-8zM86 172h4v4h-4zM70 176h4v4h-4zM78 176h4v4h-4zM86 176h4v4h-4zM70 180h4v4h-4zM82 180h8v4h-8zM70 184h4v4h-4zM86 184h4v4h-4zM70 188h4v4h-4zM86 188h4v4h-4zM70 192h4v4h-4zM86 192h4v4h-4zM98 168h16v4h-16zM94 172h4v4h-4zM94 176h4v4h-4zM98 180h12v4h-12zM110 184h4v4h-4zM110 188h4v4h-4zM94 192h16v4h-16zM118 168h20v4h-20zM126 172h4v4h-4zM126 176h4v4h-4zM126 180h4v4h-4zM126 184h4v4h-4zM126 188h4v4h-4zM118 192h20v4h-20zM146 168h12v4h-12zM142 172h4v4h-4zM158 172h4v4h-4zM142 176h4v4h-4zM142 180h4v4h-4zM154 180h8v4h-8zM142 184h4v4h-4zM158 184h4v4h-4zM142 188h4v4h-4zM158 188h4v4h-4zM146 192h12v4h-12zM166 168h4v4h-4zM182 168h4v4h-4zM166 172h4v4h-4zM182 172h4v4h-4zM166 176h4v4h-4zM182 176h4v4h-4zM166 180h20v4h-20zM166 184h4v4h-4zM182 184h4v4h-4zM166 188h4v4h-4zM182 188h4v4h-4zM166 192h4v4h-4zM182 192h4v4h-4zM190 168h20v4h-20zM198 172h4v4h-4zM198 176h4v4h-4zM198 180h4v4h-4zM198 184h4v4h-4zM198 188h4v4h-4zM198 192h4v4h-4z" fill="#a6afb8"/>
+</svg>
