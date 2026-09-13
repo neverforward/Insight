@@ -1,14 +1,15 @@
 {
   "format_version": 3,
   "format_uuid": "289f771f-2c9a-4d73-9f3f-8492495a924d",
-  "tooth": "neverforward/Insight",
+  "tooth": "github.com/neverforward/Insight",
   "version": "0.0.1",
   "info": {
     "name": "Insight",
     "description": "A lightweight, Jade‑like info display mod for Bedrock Edition that shows you exactly what you are looking at.",
     "tags": [
       "platform:levilamina",
-      "type:mod"
+      "type:mod",
+      "info display"
     ],
     "avatar_url": "https://github.com/neverforward/Insight/blob/2ce06c79740ccc32205aa4315805a5205e0850b3/assets/icon.png"
   },
