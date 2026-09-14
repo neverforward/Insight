@@ -56,3 +56,7 @@ First release: the mod template has been turned into the actual mod.
 - The mod template leftovers (`src/mod/MyMod.*`).
 
 [0.0.1]: https://github.com/neverforward/Insight/releases/tag/v0.0.1
+
+## [0.0.2] - 2026-9-14
+### Fixed 
+- fixed tooth.json
