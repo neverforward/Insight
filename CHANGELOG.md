@@ -60,3 +60,7 @@ First release: the mod template has been turned into the actual mod.
 ## [0.0.2] - 2026-9-14
 ### Fixed 
 - fixed tooth.json
+
+## [0.0.3] - 2026-9-17
+### Fixed
+- fixed tooth.json
