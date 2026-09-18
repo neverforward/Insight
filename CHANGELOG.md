@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      file (ffurrer2/extract-release-notes), so the version heading below has to
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
-## [Unreleased]
+## [0.1.0] - 2026-09-18
 
 ### Added
 
@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Higher `Config` schema version (2) for the two new hotkey options; existing files are merged
   automatically.
 
+### Removed
+
+- The first, engine-event based input path of the configuration screen (cursor mapping, synthetic
+  clicks and the software cursor) together with the debug output used while working on it.
+
 ### Fixed
 
 - Changing one option could make every further change do nothing (the queued edits were applied after
@@ -59,10 +64,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The pointer stayed visible after closing the configuration screen and could leave the game window.
 - Enum options showed their raw tokens (`top_left`, `on`) instead of a readable, translated label.
 
-### Removed
+## [0.0.3] - 2026-09-16
 
-- The first, engine-event based input path of the configuration screen (cursor mapping, synthetic
-  clicks and the software cursor) together with the debug output used while working on it.
+### Fixed
+
+- fixed tooth.json
+
+## [0.0.2] - 2026-09-13
+
+### Fixed
+
+- fixed tooth.json
 
 ## [0.0.1] - 2026-09-12
 
@@ -110,13 +122,7 @@ First release: the mod template has been turned into the actual mod.
 
 - The mod template leftovers (`src/mod/MyMod.*`).
 
+[0.1.0]: https://github.com/neverforward/Insight/compare/v0.0.3...v0.1.0
+[0.0.3]: https://github.com/neverforward/Insight/compare/v0.0.2...v0.0.3
+[0.0.2]: https://github.com/neverforward/Insight/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/neverforward/Insight/releases/tag/v0.0.1
-
-## [0.0.2] - 2026-9-14
-### Fixed 
-- fixed tooth.json
-
-## [0.0.3] - 2026-9-17
-### Fixed
-- fixed tooth.json
-[Unreleased]: https://github.com/neverforward/Insight/compare/v0.0.3...HEAD
