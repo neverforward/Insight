@@ -26,6 +26,7 @@
 /insight toggle          开/关你自己的显示（仅服务端；会持久化）
 /insight on | off        同上（仅服务端）
 /insight status          查看当前状态（开关/间隔/距离/频道或锚点/extras）
+/insight gui             打开配置界面（仅客户端）
 /insight reload          重新读取配置文件（需要 OP/管理员）
 /insight set <选项> <值>   游戏内直接改配置并保存（需要 OP/管理员）
 ```
@@ -45,9 +46,22 @@
 
 ## 配置
 
+### 配置界面（仅客户端）
+
+客户端除了聊天栏指令，还可以用界面改配置：
+
+- 用 `/insight gui` 或快捷键打开（默认 <kbd>I</kbd>）；
+- 另一个快捷键（默认 <kbd>K</kbd>）开关信息显示；
+- 两个按键都会出现在游戏自带的按键设置里、可在那里改键——配置里的 `keyOpenConfig` /
+  `keyToggleShow` 只是默认值（Windows 虚拟键码，`0` 表示不绑定）；
+- 每行显示当前值，点击行展开内联编辑器；右列是面板的实时预览与外观设置；改动立即保存，
+  底部会提示结果；
+- 界面打开期间游戏不会收到键鼠输入。
+
+
 ```jsonc
 {
-    "version": 1,                  // 结构版本；升级模组时旧配置会自动合并，无需手动迁移
+    "version": 2,                  // 结构版本；升级模组时旧配置会自动合并，无需手动迁移
 
     "enabled": true,               // 总开关
     "enabledByDefault": true,      // 玩家默认开启；玩家可用 /insight 单独切换
@@ -83,8 +97,8 @@
     "client": {
         "showOverlay": true,
         "anchor": "bottom_center", // top_left/top_center/top_right/middle_left/center/middle_right/bottom_left/bottom_center/bottom_right
-        "offsetX": 0.0,            // 屏幕宽度比例的水平偏移（正=右）
-        "offsetY": 0.0,            // 屏幕高度比例的纵向偏移（正=上）
+        "offsetX": 0.0,            // 屏幕宽度比例的水平偏移（正=从锚点向屏幕内侧）
+        "offsetY": 0.0,            // 屏幕高度比例的纵向偏移（正=从锚点向屏幕内侧）
         "fontSize": 1.0,           // 字号倍率
         "background": true,        // 文字后的半透明黑底
         "backgroundAlpha": 0.45,   // 面板透明度 0~1
@@ -93,7 +107,9 @@
         "maxWidth": 0.0,           // 最大面板宽度占屏比，0 = 不限（超长自动换行）
         "hideOverlayInGui": true,  // 打开背包/箱子等界面时隐藏面板
         "overlayOnRemote": "off",  // off=联机时隐藏本地面板（改由服务端推送）；on=联机也画
-        "language": "auto"         // auto 使用客户端当前 UI 语言
+        "language": "zh_cn",       // zh_cn、en，或 auto（客户端报告了已支持的语言时才跟随）
+        "keyOpenConfig": 73,       // 打开配置界面的快捷键（虚拟键码，0 = 不绑定）
+        "keyToggleShow": 75        // 开关信息显示的快捷键（虚拟键码，0 = 不绑定）
     }
 }
 ```

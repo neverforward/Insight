@@ -39,7 +39,9 @@ struct ClientOptions {
     //   "bottom_left" "bottom_center" "bottom_right"
     std::string anchor = "bottom_center";
 
-    // Extra offset applied to the anchor, in fractions of the screen
+    // Extra offset for the anchor, as a fraction of the screen size. A positive
+    // value always moves the panel away from the edge it is anchored at, towards
+    // the middle of the screen (for centre anchors: right/down).
     // (0.05 == 5% of screen width / height). Positive x moves right,
     // positive y moves *up* (screen space is y-up in the Bedrock UI).
     float offsetX = 0.0f;
@@ -64,10 +66,12 @@ struct ClientOptions {
     // Max overlay width as a fraction of screen width (text wraps). 0 = no wrap.
     float maxWidth = 0.0f;
 
-    // Language used for localized block names on the *client* ("auto" reads
-    // the client's current UI language; an explicit code such as "zh_cn" or
-    // "en_us" forces one).
-    std::string language = "auto";
+    // Language of the interface and of the localized block names on the *client*:
+    // "zh_cn", "en", or "auto". It is a stored preference rather than something
+    // detected at runtime - this client answers "en_US" even on a Chinese
+    // installation, so "auto" only follows it when it reports a language this mod
+    // actually ships.
+    std::string language = "zh_cn";
 
     // Overlay behaviour while connected to a remote (multiplayer) server:
     //   "off" (default): auto-hide the local overlay when playing online -
@@ -81,6 +85,13 @@ struct ClientOptions {
     // Hide the overlay while a game UI screen (inventory, chest, pause, ...)
     // is open, like Jade does.
     bool hideOverlayInGui = true;
+
+    // --- key bindings (client only) ------------------------------------
+    // Windows virtual-key codes (e.g. 0x49 = I, 0x4B = K); 0 disables the
+    // binding. Both bindings are registered with LeviLamina, so they also show
+    // up in the game's own key settings and can be remapped there.
+    int keyOpenConfig = 0x49; // open the configuration screen
+    int keyToggleShow = 0x4B; // show/hide the info display
 };
 
 // Per-block-type extra info adapters (everything can be switched off
@@ -98,11 +109,13 @@ struct BlockExtrasConfig {
 };
 
 struct Config {
-    // Config schema version. There is no released schema yet, so this starts at
-    // 1; bump it whenever options are added/removed/renamed. LeviLamina notices
-    // the mismatch, merges the new defaults into the stored values and rewrites
-    // the file (see ll::config::loadConfig).
-    int version = 1;
+    // Config schema version. IMPORTANT: bump this whenever a field is added,
+    // removed or renamed. LeviLamina only merges the current defaults into an
+    // existing file when this number differs from the file's "version", so a
+    // new field without a bump makes deserialization fail ("missing required
+    // field") and the mod refuses to load. 1 -> 2: added the client key
+    // bindings (keyOpenConfig / keyToggleShow).
+    int version = 2;
 
     // Master switch for the whole mod.
     bool enabled = true;

@@ -30,6 +30,12 @@
 
 #include <MinHook.h>
 #include <backends/imgui_impl_dx11.h>
+#include <backends/imgui_impl_win32.h>
+
+// imgui_impl_win32.h intentionally keeps this declaration inside an '#if 0'
+// block (it must not drag in <windows.h>); the backend asks applications to
+// forward declare it themselves.
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #include <imgui.h>
 
 #include <algorithm>
@@ -88,8 +94,148 @@ float   gPanelFontBaseSize = 22.0f;
 constexpr float gFontRaster = 24.0f; // atlas raster px
 
 // Frame payload (last value wins; read once per Present).
-std::mutex                            gContentMutex;
-ImGuiOverlay::Content                 gContent;
+std::mutex            gContentMutex;
+ImGuiOverlay::Content gContent;
+// extra window (the configuration screen) drawn inside the same frame; the
+// setter runs on the game thread, the reader on the render thread
+std::mutex            gDrawerMutex;
+std::function<void()> gWindowDrawer;
+
+// ImGui's Win32 backend owns mouse/keyboard/wheel input (the engine's mouse
+// events are not usable as cursor input on this client), so it takes over the
+// game's window procedure. While the configuration screen is open the mouse and
+// key messages are swallowed so the game does not react to them.
+HWND              gGameWindow{};
+WNDPROC           gOriginalWndProc{};
+bool              gWin32BackendReady = false;
+std::atomic<bool> gInputCaptured{false};
+
+// Cursor handoff for the configuration screen.
+//
+// The display counter that ShowCursor() drives is *thread* state, and the screen
+// is closed on the render thread, so calling ShowCursor there changes the wrong
+// counter and the pointer stays on screen. Both halves therefore run on the
+// window thread, posted as messages and handled in windowProc() below. Only the
+// increments this mod forced are ever given back, so Minecraft's own negative
+// count (the one that hides the pointer in gameplay) is left untouched.
+constexpr UINT   kMsgAcquireMenuCursor   = WM_APP + 0x11;
+constexpr UINT   kMsgRestoreNativeCursor = WM_APP + 0x12;
+std::atomic_int  gMenuCursorShowCount{};
+std::atomic_bool gResetImGuiMouse{false};
+RECT             gSavedClip{};
+bool             gClipRestore = false;
+bool             gClipOwned   = false;
+
+void acquireMenuCursor() {
+    // ShowCursor() returns the counter *after* the call: a value above 0 means the
+    // pointer was already visible and this probe has to be undone. That keeps the
+    // per-frame re-assertions idempotent instead of drifting upwards.
+    if (::ShowCursor(TRUE) > 0) {
+        ::ShowCursor(FALSE);
+        return;
+    }
+    gMenuCursorShowCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+void releaseMenuCursor() {
+    while (gMenuCursorShowCount.load(std::memory_order_relaxed) > 0) {
+        gMenuCursorShowCount.fetch_sub(1, std::memory_order_relaxed);
+        ::ShowCursor(FALSE);
+    }
+}
+
+// Hand the pointer back where the game expects it: locked inside its window and
+// centred, so the first relative-look frame after closing the screen does not
+// jump by the distance the pointer travelled over the menu.
+void restoreGameCursorClip(HWND window) {
+    ::ClipCursor(nullptr);
+    RECT clip{};
+    bool haveClip = false;
+    if (gClipOwned && gClipRestore) {
+        clip     = gSavedClip; // whatever the game had installed itself
+        haveClip = true;
+    } else {
+        RECT  client{};
+        POINT topLeft{};
+        POINT bottomRight{};
+        if (window && ::GetClientRect(window, &client)) {
+            topLeft     = POINT{client.left, client.top};
+            bottomRight = POINT{client.right, client.bottom};
+            if (::ClientToScreen(window, &topLeft) && ::ClientToScreen(window, &bottomRight)) {
+                clip     = RECT{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
+                haveClip = true;
+            }
+        }
+    }
+    if (haveClip && ::ClipCursor(&clip)) {
+        ::SetCursorPos((clip.left + clip.right) / 2, (clip.top + clip.bottom) / 2);
+    }
+    gClipOwned = false;
+}
+
+LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (gWin32BackendReady) {
+        ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam);
+    }
+    switch (message) {
+    case kMsgAcquireMenuCursor:
+        if (!gClipOwned) {
+            gClipRestore = ::GetClipCursor(&gSavedClip) != FALSE;
+            gClipOwned   = true;
+        }
+        ::ClipCursor(nullptr);
+        acquireMenuCursor();
+        return 0;
+    case kMsgRestoreNativeCursor:
+        releaseMenuCursor();
+        // Give the standard arrow back instead of a null cursor: hiding is the
+        // display counter's job (Minecraft's own negative count is restored
+        // above), while a null *image* would stick and leave every later screen
+        // without a pointer - a Minecraft menu only raises the counter, it does
+        // not necessarily set an image of its own.
+        ::SetCursor(::LoadCursorW(nullptr, IDC_ARROW));
+        restoreGameCursorClip(window);
+        return 0;
+    default:
+        break;
+    }
+    if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && wParam == FALSE)) {
+        // never keep the pointer while another window is in front
+        releaseMenuCursor();
+        ::ClipCursor(nullptr);
+        gClipOwned = false;
+    }
+    if (gInputCaptured.load(std::memory_order_acquire)) {
+        switch (message) {
+        case WM_MOUSEMOVE:
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONUP:
+        case WM_MBUTTONDOWN:
+        case WM_MBUTTONUP:
+        case WM_MOUSEWHEEL:
+        case WM_MOUSEHWHEEL:
+        case WM_XBUTTONDOWN:
+        case WM_XBUTTONUP:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_CHAR:
+        case WM_SETCURSOR: // ImGui sets the shape itself while it owns the mouse
+            return 0;
+        case WM_INPUT:
+        case WM_INPUT_DEVICE_CHANGE:
+            // raw input must still reach DefWindowProc for user32's bookkeeping,
+            // but the game must not look around while the screen is open
+            return ::DefWindowProcW(window, message, wParam, lParam);
+        default:
+            break;
+        }
+    }
+    return gOriginalWndProc ? CallWindowProcW(gOriginalWndProc, window, message, wParam, lParam) : 0;
+}
 std::chrono::steady_clock::time_point gLastFrameTime{};
 
 constexpr size_t kPresentVtableIndex             = 8;
@@ -140,6 +286,16 @@ void logGraphicsFailure(IDXGISwapChain* swapChain, char const* operation, HRESUL
 
 void releaseGraphicsBackend() {
     if (gGraphicsInitialized) {
+        if (gWin32BackendReady) {
+            ImGuiOverlay::setInputCaptured(false); // also restores clip + cursor
+            if (gOriginalWndProc && gGameWindow && IsWindow(gGameWindow)) {
+                SetWindowLongPtrW(gGameWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gOriginalWndProc));
+            }
+            gOriginalWndProc   = nullptr;
+            gGameWindow        = nullptr;
+            gWin32BackendReady = false;
+            ImGui_ImplWin32_Shutdown();
+        }
         ImGui_ImplDX11_Shutdown();
         gGraphicsInitialized = false;
     }
@@ -283,6 +439,14 @@ bool initializeImGui(IDXGISwapChain* swapChain) {
         auto& ioc       = ImGui::GetIO();
         ioc.IniFilename = nullptr;
         ioc.LogFilename = nullptr;
+        // keyboard navigation, so the configuration screen is usable without a
+        // mouse (arrow keys + Enter); the mouse itself arrives through the Win32
+        // backend, which is installed further down in this function
+        ioc.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        // during play the game owns the cursor: ImGui must not touch it, or its
+        // backend keeps forcing a visible arrow back over the game's hidden
+        // pointer. setInputCaptured() lifts this while the screen is open.
+        ioc.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
         ImGui::StyleColorsDark();
         loadFonts();
         if (!ioc.Fonts->Build()) {
@@ -291,6 +455,22 @@ bool initializeImGui(IDXGISwapChain* swapChain) {
         logger().info("ImGui font atlas: {}x{}px", ioc.Fonts->TexWidth, ioc.Fonts->TexHeight);
         gImGuiInitialized = true;
         logger().info("Injected Dear ImGui overlay initialized");
+    }
+    // Win32 backend: install our window procedure on the game window as soon as
+    // the swap chain (and with it the HWND) is known.
+    if (!gWin32BackendReady) {
+        DXGI_SWAP_CHAIN_DESC scDesc{};
+        HWND                 hwnd{};
+        if (SUCCEEDED(swapChain->GetDesc(&scDesc))) {
+            hwnd = scDesc.OutputWindow;
+        }
+        if (hwnd && ImGui_ImplWin32_Init(hwnd)) {
+            gGameWindow      = hwnd;
+            gOriginalWndProc = reinterpret_cast<WNDPROC>(
+                SetWindowLongPtrW(gGameWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(windowProc))
+            );
+            gWin32BackendReady = true;
+        }
     }
     if (!ImGui_ImplDX11_Init(gDevice, gDeviceContext)) {
         releaseGraphicsBackend();
@@ -327,6 +507,40 @@ bool initializeImGui(IDXGISwapChain* swapChain) {
 
 // Panel drawing. `io.DisplaySize` and `io.DeltaTime` are expected to be set
 // before this runs (between NewFrame calls).
+// Anchor point of the panel inside a w x h area, including the configured
+// offsets. A positive offset always pushes the panel away from the edge it is
+// anchored at, towards the middle of the area (for centre anchors: right/down),
+// so the whole 0..1 slider range stays usable with every anchor instead of only
+// the half that happens to point inwards.
+void anchorOrigin(
+    std::string const& anchor,
+    float              offsetX,
+    float              offsetY,
+    float              w,
+    float              h,
+    float&             u,
+    float&             v,
+    float&             cx,
+    float&             cy
+) {
+    u = 0.5f;
+    v = 0.5f;
+    if (anchor.find("left") != std::string::npos) {
+        u = 0.0f;
+    } else if (anchor.find("right") != std::string::npos) {
+        u = 1.0f;
+    }
+    if (anchor.find("top") != std::string::npos) {
+        v = 0.0f;
+    } else if (anchor.find("bottom") != std::string::npos) {
+        v = 1.0f;
+    }
+    float const sx = u < 0.34f ? 1.0f : (u > 0.66f ? -1.0f : 1.0f);
+    float const sy = v < 0.34f ? 1.0f : (v > 0.66f ? -1.0f : 1.0f);
+    cx             = u * w + offsetX * sx * w;
+    cy             = v * h + offsetY * sy * h;
+}
+
 void drawPanel(ImGuiOverlay::Content const& content) {
     auto& io = ImGui::GetIO();
     if (io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f) {
@@ -345,10 +559,15 @@ void drawPanel(ImGuiOverlay::Content const& content) {
     float padX       = 8.0f;
     float padY       = 5.0f;
 
-    // Optional width limit (client.maxWidth, fraction of the screen): split
-    // lines into visual lines at character boundaries so text never overflows.
+    // Width limit (client.maxWidth, fraction of the screen): split lines into
+    // visual lines at character boundaries so text never overflows. The panel is
+    // never allowed to grow past the display either - a wider box would be pinned
+    // to the left screen edge and the horizontal offset could not move it.
     std::vector<std::vector<ImGuiOverlay::Run>> displayLines;
-    float const maxTextWidth = content.maxWidth > 0.0f ? std::max(24.0f, content.maxWidth * w - 2.0f * padX) : 0.0f;
+    float                                       maxTextWidth = std::max(24.0f, w - 2.0f * padX - 4.0f);
+    if (content.maxWidth > 0.0f) {
+        maxTextWidth = std::min(maxTextWidth, std::max(24.0f, content.maxWidth * w - 2.0f * padX));
+    }
     if (maxTextWidth <= 0.0f) {
         displayLines = content.lines;
     } else {
@@ -411,21 +630,12 @@ void drawPanel(ImGuiOverlay::Content const& content) {
     float boxW = maxLineWidth + 2.0f * padX;
     float boxH = static_cast<float>(displayLines.size()) * lineStep + 2.0f * padY;
 
-    // Anchor: fraction of the screen the panel's anchor point sits at.
-    float u = 0.5f;
-    float v = 0.5f;
-    if (content.anchor.find("left") != std::string::npos) {
-        u = 0.0f;
-    } else if (content.anchor.find("right") != std::string::npos) {
-        u = 1.0f;
-    }
-    if (content.anchor.find("top") != std::string::npos) {
-        v = 0.0f;
-    } else if (content.anchor.find("bottom") != std::string::npos) {
-        v = 1.0f;
-    }
-    float cx = u * w + content.offsetX * w; // offsetX: positive = right
-    float cy = v * h - content.offsetY * h; // offsetY: positive = up
+    // Anchor point of the panel on screen plus the configured offsets.
+    float u  = 0.5f;
+    float v  = 0.5f;
+    float cx = 0.0f;
+    float cy = 0.0f;
+    anchorOrigin(content.anchor, content.offsetX, content.offsetY, w, h, u, v, cx, cy);
 
     // Vertical extent grows inward from top/bottom anchors.
     float boxTop    = 0.0f;
@@ -525,6 +735,11 @@ void render(IDXGISwapChain* swapChain) {
         std::lock_guard cLock(gContentMutex);
         content = gContent;
     }
+    std::function<void()> drawer;
+    {
+        std::lock_guard dLock(gDrawerMutex);
+        drawer = gWindowDrawer;
+    }
     bool hasText = false;
     for (auto const& line : content.lines) {
         if (!line.empty()) {
@@ -532,7 +747,9 @@ void render(IDXGISwapChain* swapChain) {
             break;
         }
     }
-    if (!content.visible || !hasText) {
+    // the frame only runs when there is something to draw: the HUD text or the
+    // configuration window (which has to keep drawing with the HUD hidden)
+    if ((!content.visible || !hasText) && !drawer) {
         return;
     }
 
@@ -550,11 +767,40 @@ void render(IDXGISwapChain* swapChain) {
             : std::clamp(std::chrono::duration<float>(now - gLastFrameTime).count(), 1.0f / 240.0f, 1.0f / 10.0f);
     gLastFrameTime = now;
 
+    // Re-asserted every frame while the screen is open: a Minecraft screen
+    // transition, an alt-tab or another overlay can hide the pointer behind our
+    // back. The window handler is idempotent, so this cannot drift the counter.
+    bool const menuOpen = gInputCaptured.load(std::memory_order_acquire);
+    if (menuOpen && gGameWindow && ::IsWindow(gGameWindow)) {
+        ::PostMessageW(gGameWindow, kMsgAcquireMenuCursor, 0, 0);
+    }
+    // the menu draws with the native cursor, never ImGui's software one
+    ImGui::GetIO().MouseDrawCursor = false;
+
     auto draw = [&](ID3D11RenderTargetView* target) {
         gDeviceContext->OMSetRenderTargets(1, &target, nullptr);
+        if (gResetImGuiMouse.exchange(false, std::memory_order_acq_rel)) {
+            // ImGui tracks the buttons separately from Win32, so the state of the
+            // click that closed the screen has to be dropped before the game gets
+            // the mouse back
+            auto& io = ImGui::GetIO();
+            for (bool& down : io.MouseDown) {
+                down = false;
+            }
+            io.MouseWheel  = 0.0f;
+            io.MouseWheelH = 0.0f;
+        }
+        ImGui_ImplWin32_NewFrame();
         ImGui_ImplDX11_NewFrame();
         ImGui::NewFrame();
-        drawPanel(content);
+        // The configuration screen is modal and shows the panel as its own
+        // preview, so the real one is not drawn underneath it as well.
+        if (content.visible && hasText && !menuOpen) {
+            drawPanel(content);
+        }
+        if (drawer) {
+            drawer(); // configuration screen, drawn on top of the HUD
+        }
         ImGui::Render();
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         ID3D11RenderTargetView* empty{};
@@ -822,6 +1068,135 @@ bool ImGuiOverlay::installed() const { return gInstalled.load(std::memory_order_
 void ImGuiOverlay::setContent(Content content) {
     std::lock_guard lock(gContentMutex);
     gContent = std::move(content);
+}
+
+void ImGuiOverlay::setWindowDrawer(std::function<void()> drawer) {
+    std::lock_guard lock(gDrawerMutex);
+    gWindowDrawer = std::move(drawer);
+}
+
+void ImGuiOverlay::setInputCaptured(bool captured) {
+    if (gInputCaptured.exchange(captured, std::memory_order_acq_rel) == captured) {
+        return;
+    }
+    if (ImGui::GetCurrentContext() != nullptr) {
+        auto& flags = ImGui::GetIO().ConfigFlags;
+        if (captured) {
+            // let ImGui pick the cursor shape (arrow, hand, text beam); the
+            // window handler keeps the pointer visible through ShowCursor()
+            flags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+        } else {
+            flags |= ImGuiConfigFlags_NoMouseCursorChange;
+        }
+    }
+    if (!captured) {
+        gResetImGuiMouse.store(true, std::memory_order_release);
+    }
+    if (gGameWindow && ::IsWindow(gGameWindow)) {
+        ::PostMessageW(gGameWindow, captured ? kMsgAcquireMenuCursor : kMsgRestoreNativeCursor, 0, 0);
+    }
+}
+
+void ImGuiOverlay::drawContentPreview(
+    float              x,
+    float              y,
+    float              width,
+    float              height,
+    float              scale,
+    std::string const& anchor,
+    float              offsetX,
+    float              offsetY
+) {
+    Content content;
+    {
+        std::lock_guard cLock(gContentMutex);
+        content = gContent;
+    }
+    if (content.lines.empty()) {
+        return;
+    }
+
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    ImFont*     font = ImGui::GetFont();
+    float const size = ImGui::GetFontSize() * std::clamp(scale, 0.5f, 3.0f);
+    float const step = size * 1.25f;
+    float const padX = 6.0f;
+    float const padY = 5.0f;
+
+    // Measure the block the panel occupies...
+    float maxLineWidth = 0.0f;
+    auto  measure      = [&](std::vector<ImGuiOverlay::Run> const& line) {
+        float width1 = 0.0f;
+        for (auto const& run : line) {
+            width1 += font->CalcTextSizeA(size, FLT_MAX, 0.0f, run.text.c_str()).x;
+        }
+        maxLineWidth = std::max(maxLineWidth, width1);
+    };
+    for (auto const& line : content.lines) {
+        measure(line);
+    }
+    float const boxW = std::min(maxLineWidth + 2.0f * padX, width);
+    float const boxH = std::min(static_cast<float>(content.lines.size()) * step + 2.0f * padY, height);
+
+    // ...and place it inside the preview area exactly like the overlay places it
+    // on the screen, so the anchor and both offsets are visible here as well.
+    float u  = 0.5f;
+    float v  = 0.5f;
+    float cx = 0.0f;
+    float cy = 0.0f;
+    anchorOrigin(anchor, offsetX, offsetY, width, height, u, v, cx, cy);
+    float boxLeft = u <= 0.001f ? cx : (u >= 0.999f ? cx - boxW : cx - boxW * 0.5f);
+    float boxTop  = v <= 0.001f ? cy : (v >= 0.999f ? cy - boxH : cy - boxH * 0.5f);
+    boxLeft       = std::clamp(boxLeft, 0.0f, std::max(0.0f, width - boxW));
+    boxTop        = std::clamp(boxTop, 0.0f, std::max(0.0f, height - boxH));
+
+    float const originX = x + boxLeft;
+    float const originY = y + boxTop;
+
+    if (content.background) {
+        float const alpha = std::clamp(content.backgroundAlpha, 0.0f, 1.0f);
+        draw->AddRectFilled(
+            ImVec2(originX, originY),
+            ImVec2(originX + boxW, originY + boxH),
+            toImU32(0.0f, 0.0f, 0.0f, alpha)
+        );
+    }
+
+    bool const left   = u < 0.34f;
+    bool const right  = u > 0.66f;
+    float      cursor = originY + padY;
+    draw->PushClipRect(ImVec2(originX, originY), ImVec2(originX + boxW, originY + boxH), true);
+    for (auto const& line : content.lines) {
+        bool  empty     = true;
+        float lineWidth = 0.0f;
+        for (auto const& run : line) {
+            if (!run.text.empty()) {
+                empty = false;
+            }
+            lineWidth += font->CalcTextSizeA(size, FLT_MAX, 0.0f, run.text.c_str()).x;
+        }
+        if (empty) {
+            cursor += step;
+            continue;
+        }
+        float xCursor = originX + padX;
+        if (right) {
+            xCursor = originX + boxW - padX - lineWidth;
+        } else if (!left) {
+            xCursor = originX + (boxW - lineWidth) * 0.5f;
+        }
+        for (auto const& run : line) {
+            auto const col  = toImU32(run.r, run.g, run.b);
+            auto const colS = toImU32(0.0f, 0.0f, 0.0f, 0.75f);
+            if (content.shadow) {
+                draw->AddText(font, size, ImVec2(xCursor + 1.0f, cursor + 1.0f), colS, run.text.c_str());
+            }
+            draw->AddText(font, size, ImVec2(xCursor, cursor), col, run.text.c_str());
+            xCursor += font->CalcTextSizeA(size, FLT_MAX, 0.0f, run.text.c_str()).x;
+        }
+        cursor += step;
+    }
+    draw->PopClipRect();
 }
 
 void ImGuiOverlay::shutdown() {

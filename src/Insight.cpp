@@ -117,13 +117,14 @@ bool parseDouble(std::string const& value, double& out) {
 }
 
 bool parseInt(std::string const& value, long& out) {
-    try {
-        size_t used = 0;
-        out         = std::stol(value, &used);
-        return used == value.size();
-    } catch (...) {
+    // the configuration screen sends slider values formatted as decimals
+    // ("12.00"), so any integral number is accepted, not only a bare literal
+    double parsed = 0.0;
+    if (!parseDouble(value, parsed) || parsed != static_cast<double>(static_cast<long>(parsed))) {
         return false;
     }
+    out = static_cast<long>(parsed);
+    return true;
 }
 
 } // namespace
@@ -168,12 +169,14 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
             return {false, tr(localeCode, "Invalid number value: {0}", value)};
         }
         if (d < lo || d > hi) {
-            return {false,
-                    tr(localeCode,
-                       "Value out of range for {0} ({1}..{2})",
-                       name,
-                       util::trimNumber(lo),
-                       util::trimNumber(hi))};
+            return {
+                false,
+                tr(localeCode,
+                   "Value out of range for {0} ({1}..{2})",
+                   name,
+                   util::trimNumber(lo),
+                   util::trimNumber(hi))
+            };
         }
         target = static_cast<float>(d);
         return finish({true, tr(localeCode, "set {0} = {1}", name, util::trimNumber(d, 2))});
@@ -195,6 +198,14 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
             list += candidate;
         }
         return {false, tr(localeCode, "Invalid value for {0} ({1})", name, list)};
+    };
+    auto setKeyCode = [&](int& target, char const* name) -> ConfigEditResult {
+        long v = 0;
+        if (!parseInt(value, v) || v < 0 || v > 255) {
+            return {false, tr(localeCode, "Invalid key code: {0} (0..255, 0 = disabled)", value)};
+        }
+        target = static_cast<int>(v);
+        return finish({true, tr(localeCode, "set {0} = {1}", name, std::to_string(v))});
     };
 
     // --- top-level options -----------------------------------------------
@@ -295,6 +306,12 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
     if (lower == "overlayonremote") {
         return setEnum(gConfig.client.overlayOnRemote, "overlayOnRemote", {"on", "off"});
     }
+    if (lower == "keyopenconfig") {
+        return setKeyCode(gConfig.client.keyOpenConfig, "keyOpenConfig");
+    }
+    if (lower == "keytoggleshow") {
+        return setKeyCode(gConfig.client.keyToggleShow, "keyToggleShow");
+    }
 
     // --- extras adapters --------------------------------------------------
     if (lower == "extras.enabled") {
@@ -336,10 +353,20 @@ bool Insight::load() {
         loaded.error().log(logger);
     }
 
-    // Load the configuration file; if it is missing or has an older schema
-    // version, loadConfigFile merges the current defaults in and we persist
-    // the upgraded copy right away.
-    if (loadConfigFile(gConfig)) {
+    // Load the configuration file; if it is missing or carries an older schema
+    // version, loadConfigFile merges the current defaults in and we persist the
+    // upgraded copy right away. A broken file must never keep the mod from
+    // loading, so failures fall back to the defaults and rewrite the file.
+    bool loaded = false;
+    try {
+        loaded = loadConfigFile(gConfig);
+    } catch (std::exception const& e) {
+        logger.error("Cannot read {} ({}); falling back to the default configuration", configPath().string(), e.what());
+        gConfig = Config{};
+        saveConfigFile();
+        loaded = true;
+    }
+    if (loaded) {
         logger.debug("Configuration loaded (version {}).", gConfig.version);
     } else {
         logger.info(

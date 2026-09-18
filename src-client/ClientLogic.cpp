@@ -33,19 +33,24 @@
 #include "mc/world/containers/models/ContainerModel.h"
 #include "mc/world/inventory/network/ContainerScreenContext.h"
 #include "mc/world/level/BlockSource.h"
-#include "mc/world/level/dimension/Dimension.h"
 #include "mc/world/level/block/actor/BlockActor.h"
+#include "mc/world/level/dimension/Dimension.h"
 
 #include "Config.h"
+#include "ConfigUi.h"
 #include "EntityTarget.h"
 #include "Extras.h"
 #include "Format.h"
+#include "I18n.h"
 #include "Insight.h"
 #include "InsightCommand.h"
 #include "Raycast.h"
 #include "Util.h"
 
 #include "ll/api/event/command/ClientCommandRegisterEvent.h"
+#include "ll/api/event/input/KeyInputEvent.h"
+#include "ll/api/event/input/MouseInputEvent.h"
+#include "ll/api/input/KeyRegistry.h"
 
 namespace insight {
 
@@ -407,10 +412,65 @@ bool ClientLogic::enable() {
     mListeners.emplace_back(bus.emplaceListener<ll::event::render::BeforeUIRenderEvent>(
         [this](ll::event::render::BeforeUIRenderEvent& event) { onRender(event); }
     ));
-    // /insight on the client: status / reload / set <option> <value>
+    // /insight on the client: status / reload / set <option> <value> / gui
     mListeners.emplace_back(bus.emplaceListener<ll::event::command::ClientCommandRegisterEvent>([](auto&) {
-        registerInsightCommand(true);
+        registerInsightCommand(true, nullptr, [] { ConfigUi::instance().setVisible(true); });
     }));
+
+    // configuration screen: the overlay draws it inside its ImGui frame
+    mOverlay.setWindowDrawer([] { ConfigUi::instance().draw(); });
+
+    // keyboard/mouse for that screen. While it is open the events are cancelled,
+    // so the game neither moves the player nor looks around (the screen is
+    // modal). Events arrive on the game thread and are replayed into ImGui on
+    // the render thread by ConfigUi.
+    //
+    // The hotkeys are handled here as well: the KeyRegistry handlers alone did
+    // not fire reliably, while these input events always arrive, and the handles
+    // are still consulted for their *current* key codes so remapping them in the
+    // game's key settings keeps working.
+    auto& keys    = ll::input::KeyRegistry::getInstance();
+    auto& openKey = keys.getOrCreateKey("Insight.openConfig", {Insight::cfg().client.keyOpenConfig}, true);
+    auto& showKey = keys.getOrCreateKey("Insight.toggleShow", {Insight::cfg().client.keyToggleShow}, true);
+
+    mListeners.emplace_back(bus.emplaceListener<ll::event::input::KeyInputEvent>(
+        [&openKey, &showKey](ll::event::input::KeyInputEvent& event) {
+            auto& ui = ConfigUi::instance();
+            if (event.isDown()) {
+                int const code = event.keyCode();
+                for (int bound : openKey.getKeyCodes()) {
+                    if (bound != 0 && bound == code) {
+                        ui.toggle();
+                        event.cancel();
+                        return;
+                    }
+                }
+                for (int bound : showKey.getKeyCodes()) {
+                    if (bound != 0 && bound == code) {
+                        auto const& cfg = Insight::cfg();
+                        (void)Insight::applyConfigEdit("showOverlay", cfg.client.showOverlay ? "false" : "true", {});
+                        event.cancel();
+                        return;
+                    }
+                }
+            }
+            if (!ui.visible()) {
+                return;
+            }
+            ui.onKey(event.keyCode(), event.isDown());
+            event.cancel();
+        }
+    ));
+    mListeners.emplace_back(
+        bus.emplaceListener<ll::event::input::MouseInputEvent>([](ll::event::input::MouseInputEvent& event) {
+            // The configuration screen reads the mouse through ImGui's Win32
+            // backend, so while it is open the game must not see the mouse at all.
+            if (!ConfigUi::instance().visible()) {
+                return;
+            }
+            event.cancel();
+        })
+    );
 
     // The info panel is drawn by the ImGui overlay (vanilla UI text cannot
     // render CJK names on this GDK build). Hooks are installed once here and
@@ -481,6 +541,34 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             mOverlay.install();
         }
     }
+    // Configuration screen: it renders on the overlay's thread, so it only
+    // queues edits - they are applied here, on the game thread, together with
+    // the config file write. It is handled *before* the "mod or panel switched
+    // off" shortcut below, because those are options the screen itself edits.
+    {
+        auto&       ui   = ConfigUi::instance();
+        std::string lang = Insight::cfg().client.language;
+        lang             = insight::resolveLanguageCode(lang, [] {
+            try {
+                return std::string(getI18n().getCurrentLanguage()->getLanguageCode());
+            } catch (...) {
+                return std::string{};
+            }
+        }());
+        std::string option;
+        std::string value;
+        while (ui.takeEdit(option, value)) {
+            if (option == "reload") {
+                Insight::reloadConfigFromDisk();
+                ui.setStatus(true, tr(lang, "Insight configuration reloaded."));
+            } else {
+                auto const result = Insight::applyConfigEdit(option, value, lang);
+                ui.setStatus(result.ok, result.message);
+            }
+        }
+        ui.setLocale(lang);
+        ui.setPreviewText(mText);
+    }
     if (!cfg.enabled || !cfg.client.showOverlay) {
         mVisible = false;
         pushOverlay();
@@ -490,6 +578,8 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
     auto& ctx         = event.uiRenderContext();
     auto& client      = ctx.mClient; // IClientInstance&
     auto* localPlayer = client.getLocalPlayer();
+
+
     if (!localPlayer || !client.getLevel()) {
         mVisible          = false; // in a menu / loading / outside any level
         mRefreshRequested = true;
@@ -596,13 +686,13 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
 
         // UI language, used for the built-in extra labels
         std::string lang = cfg.client.language;
-        if (lang.empty() || lang == "auto") {
+        lang             = insight::resolveLanguageCode(lang, [] {
             try {
-                lang = getI18n().getCurrentLanguage()->getLanguageCode();
+                return std::string(getI18n().getCurrentLanguage()->getLanguageCode());
             } catch (...) {
-                lang = "en_US";
+                return std::string{};
             }
-        }
+        }());
 
         // nearest entity on the same look ray; wins when it is closer than a
         // hit block (client-side world data, best effort on remote servers)
@@ -639,10 +729,10 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
                 info.light    = describeBlockLight(region, eblock);
                 info.emission = describeBlockEmission(region, eblock);
             }
-            text = renderText(cfg, info);
-            std::string const entityState =
-                info.entityType + "|" + info.entityName + "|" + std::to_string(info.health);
-            if (entityState != lastEntityLog) {                lastEntityLog = entityState;
+            text                          = renderText(cfg, info);
+            std::string const entityState = info.entityType + "|" + info.entityName + "|" + std::to_string(info.health);
+            if (entityState != lastEntityLog) {
+                lastEntityLog = entityState;
                 Insight::getInstance().getSelf().getLogger().debug(
                     "[look] entity={} name={} hp={}/{}",
                     info.entityType,
@@ -676,10 +766,10 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
                 }
             }
             // diagnostics: one line per *change* of the sampled target
-            std::string const blockState =
-                info.blockType + "|" + info.blockName + "|" + info.extras + "|" + info.direction + "|" + info.light
-                + "|" + info.emission + "|" + std::to_string(hit->pos.x) + "," + std::to_string(hit->pos.y) + ","
-                + std::to_string(hit->pos.z) + neighborInfo;
+            std::string const blockState = info.blockType + "|" + info.blockName + "|" + info.extras + "|"
+                                         + info.direction + "|" + info.light + "|" + info.emission + "|"
+                                         + std::to_string(hit->pos.x) + "," + std::to_string(hit->pos.y) + ","
+                                         + std::to_string(hit->pos.z) + neighborInfo;
             if (blockState != lastBlockLog) {
                 lastBlockLog = blockState;
                 Insight::getInstance().getSelf().getLogger().debug(

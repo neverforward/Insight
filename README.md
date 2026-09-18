@@ -26,6 +26,7 @@ hot-reload it, or change values in game with `/insight set <option> <value>`.
 /insight toggle          toggle your own display (server only; persisted)
 /insight on | off        same as above (server only)
 /insight status          show the current state (switch/interval/distance/channel or anchor/extras)
+/insight gui             open the configuration screen (client only)
 /insight reload          re-read the configuration file (OP / operator)
 /insight set <option> <value>   change a setting in game and save it (OP / operator)
 ```
@@ -46,9 +47,24 @@ written when a player changes the switch away from its **default** value.
 
 ## Configuration
 
+### Configuration screen (client)
+
+The client can also edit the configuration in a screen instead of the chat:
+
+- open it with `/insight gui` or the hotkey (default <kbd>I</kbd>);
+- a second hotkey (default <kbd>K</kbd>) shows/hides the info display;
+- both bindings show up in the game's own key settings and can be remapped there - the config
+  values `keyOpenConfig` / `keyToggleShow` are only the defaults (Windows virtual-key codes,
+  `0` disables a binding);
+- each row shows the current value and opens an inline editor when clicked, the right column holds
+  a live preview of the panel plus the appearance settings, and every change is saved immediately
+  (the footer reports what happened);
+- while the screen is open the game does not receive keyboard/mouse input.
+
+
 ```jsonc
 {
-    "version": 1,                  // schema version; older files are merged automatically
+    "version": 2,                  // schema version; older files are merged automatically
 
     "enabled": true,               // master switch
     "enabledByDefault": true,      // default for players; they can toggle it with /insight
@@ -84,8 +100,8 @@ written when a player changes the switch away from its **default** value.
     "client": {
         "showOverlay": true,
         "anchor": "bottom_center", // top_left/top_center/top_right/middle_left/center/middle_right/bottom_left/bottom_center/bottom_right
-        "offsetX": 0.0,            // horizontal offset as a fraction of the screen width (positive = right)
-        "offsetY": 0.0,            // vertical offset as a fraction of the screen height (positive = up)
+        "offsetX": 0.0,            // horizontal offset as a fraction of the screen width (positive = inward from the anchor)
+        "offsetY": 0.0,            // vertical offset as a fraction of the screen height (positive = inward from the anchor)
         "fontSize": 1.0,           // font scale
         "background": true,        // translucent black panel behind the text
         "backgroundAlpha": 0.45,   // panel opacity 0..1
@@ -94,7 +110,9 @@ written when a player changes the switch away from its **default** value.
         "maxWidth": 0.0,           // max panel width as a fraction of the screen, 0 = unlimited (long lines wrap)
         "hideOverlayInGui": true,  // hide the panel while an inventory / container screen is open
         "overlayOnRemote": "off",  // off = hide the local panel online (the server pushes it); on = always draw
-        "language": "auto"         // auto = use the client's current UI language
+        "language": "zh_cn",       // zh_cn, en, or auto (follow the client when it reports a shipped language)
+        "keyOpenConfig": 73,       // hotkey for the configuration screen (VK code, 0 = disabled)
+        "keyToggleShow": 75        // hotkey to show/hide the info display (VK code, 0 = disabled)
     }
 }
 ```

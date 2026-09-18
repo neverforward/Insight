@@ -46,36 +46,13 @@ struct InsightSetRawParam {
 // applyConfigEdit() and documented in README.md.
 std::vector<std::string> const& optionNames() {
     static std::vector<std::string> const names{
-        "enabled",
-        "enabledByDefault",
-        "maxDistance",
-        "intervalTicks",
-        "passThroughLiquids",
-        "showEmpty",
-        "emptyText",
-        "format",
-        "channel",
-        "showOverlay",
-        "anchor",
-        "offsetX",
-        "offsetY",
-        "fontSize",
-        "maxWidth",
-        "background",
-        "backgroundAlpha",
-        "shadow",
-        "textColor",
-        "language",
-        "hideOverlayInGui",
-        "overlayOnRemote",
-        "entityEnabled",
-        "entityFormat",
-        "extras.enabled",
-        "extras.chest",
-        "extras.furnace",
-        "extras.brewing",
-        "extras.redstone",
-        "extras.misc",
+        "enabled",          "enabledByDefault", "maxDistance",   "intervalTicks",  "passThroughLiquids",
+        "showEmpty",        "emptyText",        "format",        "channel",        "showOverlay",
+        "anchor",           "offsetX",          "offsetY",       "fontSize",       "maxWidth",
+        "background",       "backgroundAlpha",  "shadow",        "textColor",      "language",
+        "hideOverlayInGui", "overlayOnRemote",  "keyOpenConfig", "keyToggleShow",  "entityEnabled",
+        "entityFormat",     "extras.enabled",   "extras.chest",  "extras.furnace", "extras.brewing",
+        "extras.redstone",  "extras.misc",
     };
     return names;
 }
@@ -91,16 +68,16 @@ Player* playerFromOrigin(CommandOrigin const& origin) {
 }
 
 std::string statusText(std::string const& localeCode) {
-    auto const& cfg = Insight::cfg();
-    std::string s   = tr(localeCode, "Insight") + " " + tr(localeCode, cfg.enabled ? "on" : "off");
-    s += " | " + tr(localeCode, "interval") + " " + std::to_string(cfg.intervalTicks) + "t";
-    s += " | " + tr(localeCode, "dist") + " " + std::to_string((int)cfg.maxDistance);
+    auto const& cfg  = Insight::cfg();
+    std::string s    = tr(localeCode, "Insight") + " " + tr(localeCode, cfg.enabled ? "on" : "off");
+    s               += " | " + tr(localeCode, "interval") + " " + std::to_string(cfg.intervalTicks) + "t";
+    s               += " | " + tr(localeCode, "dist") + " " + std::to_string((int)cfg.maxDistance);
 #ifdef INSIGHT_TARGET_SERVER
     s += " | " + tr(localeCode, "channel") + " " + cfg.server.channel;
 #else
     s += " | " + tr(localeCode, "anchor") + " " + cfg.client.anchor;
     s += " | " + tr(localeCode, "lang") + " "
-         + (cfg.client.language.empty() ? tr(localeCode, "auto") : cfg.client.language);
+       + (cfg.client.language.empty() ? tr(localeCode, "auto") : cfg.client.language);
 #endif
     if (cfg.extras.enabled) {
         s += " | extras " + tr(localeCode, "on");
@@ -114,78 +91,72 @@ bool mayManage(CommandOrigin const& origin) {
 
 } // namespace
 
-void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn) {
+void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn, OpenConfigUiFn openUi) {
     auto& registrar = ll::command::CommandRegistrar::getInstance(isClientSide);
 
     // Register the option list before declaring the overload so the game can
     // complete it. Registries that cannot hold soft enums fall back to a plain
     // string option below.
     auto const enumName = std::string(ll::command::enum_name_v<InsightConfigOption>);
-    bool const softEnum =
-        registrar.hasSoftEnum(enumName) || registrar.tryRegisterSoftEnum(enumName, optionNames());
+    bool const softEnum = registrar.hasSoftEnum(enumName) || registrar.tryRegisterSoftEnum(enumName, optionNames());
 
-    auto& cmd = registrar.getOrCreateCommand(
-        "insight",
-        "Insight - show what you are looking at",
-        CommandPermissionLevel::Any
-    );
+    auto& cmd =
+        registrar.getOrCreateCommand("insight", "Insight - show what you are looking at", CommandPermissionLevel::Any);
 
     if (toggleFn) {
         // --- per-player switches (server only) --------------------------
-        cmd.overload()
-            .text("toggle")
-            .execute([toggleFn](CommandOrigin const& origin, CommandOutput& output) {
-                auto* player = playerFromOrigin(origin);
-                if (!player) {
-                    output.error(tr(origin.getLocaleCode(), "This command can only be run by a player."));
-                    return;
-                }
-                bool now = toggleFn(*player);
-                output.success(
-                    tr(origin.getLocaleCode(), now ? "Insight enabled for you." : "Insight disabled for you.")
-                );
-            });
-        cmd.overload()
-            .text("on")
-            .execute([toggleFn](CommandOrigin const& origin, CommandOutput& output) {
-                auto* player = playerFromOrigin(origin);
-                if (!player) {
-                    output.error(tr(origin.getLocaleCode(), "This command can only be run by a player."));
-                    return;
-                }
-                toggleFn(*player);
-                output.success(tr(origin.getLocaleCode(), "Insight enabled for you."));
-            });
-        cmd.overload()
-            .text("off")
-            .execute([toggleFn](CommandOrigin const& origin, CommandOutput& output) {
-                auto* player = playerFromOrigin(origin);
-                if (!player) {
-                    output.error(tr(origin.getLocaleCode(), "This command can only be run by a player."));
-                    return;
-                }
-                toggleFn(*player);
-                output.success(tr(origin.getLocaleCode(), "Insight disabled for you."));
-            });
+        cmd.overload().text("toggle").execute([toggleFn](CommandOrigin const& origin, CommandOutput& output) {
+            auto* player = playerFromOrigin(origin);
+            if (!player) {
+                output.error(tr(origin.getLocaleCode(), "This command can only be run by a player."));
+                return;
+            }
+            bool now = toggleFn(*player);
+            output.success(tr(origin.getLocaleCode(), now ? "Insight enabled for you." : "Insight disabled for you."));
+        });
+        cmd.overload().text("on").execute([toggleFn](CommandOrigin const& origin, CommandOutput& output) {
+            auto* player = playerFromOrigin(origin);
+            if (!player) {
+                output.error(tr(origin.getLocaleCode(), "This command can only be run by a player."));
+                return;
+            }
+            toggleFn(*player);
+            output.success(tr(origin.getLocaleCode(), "Insight enabled for you."));
+        });
+        cmd.overload().text("off").execute([toggleFn](CommandOrigin const& origin, CommandOutput& output) {
+            auto* player = playerFromOrigin(origin);
+            if (!player) {
+                output.error(tr(origin.getLocaleCode(), "This command can only be run by a player."));
+                return;
+            }
+            toggleFn(*player);
+            output.success(tr(origin.getLocaleCode(), "Insight disabled for you."));
+        });
     }
 
     // --- shared ---------------------------------------------------------
-    cmd.overload()
-        .text("status")
-        .execute([](CommandOrigin const& origin, CommandOutput& output) {
-            output.success(statusText(origin.getLocaleCode()));
-        });
+    cmd.overload().text("status").execute([](CommandOrigin const& origin, CommandOutput& output) {
+        output.success(statusText(origin.getLocaleCode()));
+    });
 
-    cmd.overload()
-        .text("reload")
-        .execute([isClientSide](CommandOrigin const& origin, CommandOutput& output) {
-            if (!isClientSide && !mayManage(origin)) {
-                output.error(tr(origin.getLocaleCode(), "You do not have permission to reload Insight."));
-                return;
-            }
-            Insight::reloadConfigFromDisk();
-            output.success(tr(origin.getLocaleCode(), "Insight configuration reloaded."));
-        });
+    // --- /insight gui: the client-side configuration screen ---------------
+    cmd.overload().text("gui").execute([openUi](CommandOrigin const& origin, CommandOutput& output) {
+        if (!openUi) {
+            output.error(tr(origin.getLocaleCode(), "The configuration screen is client-side only."));
+            return;
+        }
+        openUi();
+        output.success(tr(origin.getLocaleCode(), "Insight configuration screen opened."));
+    });
+
+    cmd.overload().text("reload").execute([isClientSide](CommandOrigin const& origin, CommandOutput& output) {
+        if (!isClientSide && !mayManage(origin)) {
+            output.error(tr(origin.getLocaleCode(), "You do not have permission to reload Insight."));
+            return;
+        }
+        Insight::reloadConfigFromDisk();
+        output.success(tr(origin.getLocaleCode(), "Insight configuration reloaded."));
+    });
 
     // --- /insight set <option> <value> ----------------------------------
     auto applySet = [isClientSide](
@@ -207,26 +178,22 @@ void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn) {
     };
 
     if (softEnum) {
-        cmd.overload<InsightSetParam>()
-            .text("set")
-            .required("option")
-            .required("value")
-            .execute([applySet](CommandOrigin const& origin, CommandOutput& output, InsightSetParam const& param) {
+        cmd.overload<InsightSetParam>().text("set").required("option").required("value").execute(
+            [applySet](CommandOrigin const& origin, CommandOutput& output, InsightSetParam const& param) {
                 applySet(origin, output, param.option, param.value);
-            });
+            }
+        );
         // Registering the overload may have added the enum's own (empty) value
         // list; make sure exactly the option names remain completable.
         if (registrar.hasSoftEnum(enumName)) {
             registrar.setSoftEnumValues(enumName, optionNames());
         }
     } else {
-        cmd.overload<InsightSetRawParam>()
-            .text("set")
-            .required("option")
-            .required("value")
-            .execute([applySet](CommandOrigin const& origin, CommandOutput& output, InsightSetRawParam const& param) {
+        cmd.overload<InsightSetRawParam>().text("set").required("option").required("value").execute(
+            [applySet](CommandOrigin const& origin, CommandOutput& output, InsightSetRawParam const& param) {
                 applySet(origin, output, param.option, param.value);
-            });
+            }
+        );
     }
 
     if (!softEnum) {

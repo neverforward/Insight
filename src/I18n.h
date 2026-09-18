@@ -43,4 +43,12 @@ template <class... Args>
     }
 }
 
+
+/// Best-effort UI language for this process: the configured value ("auto" reads
+/// the engine), then the engine's current language, then the operating system's
+/// UI language, and finally English. A candidate only wins when a message file
+/// for it actually exists, so a client that reports "en_US" on a Chinese install
+/// no longer forces English onto the interface.
+std::string resolveLanguageCode(std::string const& configured, std::string const& engineLanguage = {});
+
 } // namespace insight

@@ -290,8 +290,7 @@ std::string chestLine(BlockActor const* be, BlockPos const& pos, std::string con
         );
     }
 
-    std::string s = "§7" + tr(langCode, "Items") + " §f" + std::to_string(filled) + "/"
-                  + std::to_string(size);
+    std::string s = "§7" + tr(langCode, "Items") + " §f" + std::to_string(filled) + "/" + std::to_string(size);
     if (total > 0) {
         s += " §7· §f" + std::to_string(total);
     }
@@ -328,8 +327,7 @@ std::string machineLine(BlockActor const* be, BlockPos const& pos, std::string c
             filled = snap.filled;
         }
     }
-    return "§7" + tr(langCode, "Slots") + " §f" + std::to_string(filled) + "/"
-         + std::to_string(size);
+    return "§7" + tr(langCode, "Slots") + " §f" + std::to_string(filled) + "/" + std::to_string(size);
 }
 
 // First non-empty slot of a container as a localized item name ("" if empty).
@@ -496,8 +494,14 @@ void miscStateLines(
         }
         {
             std::string neighbors;
-            for (auto const& offset : {BlockPos{0, -1, 0}, BlockPos{0, 1, 0}, BlockPos{0, 0, -1},
-                                       BlockPos{0, 0, 1}, BlockPos{-1, 0, 0}, BlockPos{1, 0, 0}}) {
+            for (auto const& offset : {
+                     BlockPos{0,  -1, 0 },
+                     BlockPos{0,  1,  0 },
+                     BlockPos{0,  0,  -1},
+                     BlockPos{0,  0,  1 },
+                     BlockPos{-1, 0,  0 },
+                     BlockPos{1,  0,  0 }
+            }) {
                 if (!neighbors.empty()) {
                     neighbors += " ";
                 }
@@ -509,8 +513,8 @@ void miscStateLines(
                 pos,
                 "type=" + type
                     + " actor=" + (be ? std::to_string(static_cast<int>(be->getType())) : std::string("<none>"))
-                    + " state=" + std::to_string(static_cast<int>(*pistonState))
-                    + " states=[" + describeBlockStateNames(region, pos) + "] neighbors=[" + neighbors + "]"
+                    + " state=" + std::to_string(static_cast<int>(*pistonState)) + " states=["
+                    + describeBlockStateNames(region, pos) + "] neighbors=[" + neighbors + "]"
             );
         }
         lines.push_back(textLine(langCode, "State", stateText));
@@ -625,9 +629,9 @@ void blockActorLines(
             int         size    = pot->getContainerSize();
             std::string message = "containerSize=" + std::to_string(size);
             if (size > 0) {
-                auto const& stack = pot->getItem(0);
-                message += " item=" + (stack.isNull() ? std::string("<empty>") : stack.getDescriptionId())
-                         + " count=" + std::to_string(stack.mCount);
+                auto const& stack  = pot->getItem(0);
+                message           += " item=" + (stack.isNull() ? std::string("<empty>") : stack.getDescriptionId())
+                                   + " count=" + std::to_string(stack.mCount);
             }
             message += " sherds=" + std::to_string(custom);
             logOnce(Insight::getInstance().getSelf().getLogger(), "pot", pos, message);
@@ -854,9 +858,7 @@ std::string buildBlockExtras(
             auto const* fp    = static_cast<FlowerPotBlockActor const*>(be);
             auto const* plant = fp->getPlantItem();
             if (plant) {
-                lines.push_back(
-                    "§7" + tr(langCode, "Pot") + " §f" + localizeKey(langCode, plant->getDescriptionId())
-                );
+                lines.push_back("§7" + tr(langCode, "Pot") + " §f" + localizeKey(langCode, plant->getDescriptionId()));
             }
         } else if (isPottedBlock(region, pos)) {
             // Modern versions encode the plant in the block itself. Bedrock
@@ -864,8 +866,7 @@ std::string buildBlockExtras(
             // own display name (which is where the plant lives) is used - the
             // engine data, without parsing the id.
             lines.push_back(
-                "§7" + tr(langCode, "Pot") + " §f"
-                + localizeKey(langCode, region.getBlock(pos).getDescriptionId())
+                "§7" + tr(langCode, "Pot") + " §f" + localizeKey(langCode, region.getBlock(pos).getDescriptionId())
             );
         }
     }
@@ -927,8 +928,7 @@ std::string buildEntityExtras(
             }
         }
         if (size > 0) {
-            std::string s = "§7" + tr(langCode, "Items") + " §f" + std::to_string(filled) + "/"
-                          + std::to_string(size);
+            std::string s = "§7" + tr(langCode, "Items") + " §f" + std::to_string(filled) + "/" + std::to_string(size);
             if (total > 0) {
                 s += " §7· §f" + std::to_string(total);
             }
@@ -961,9 +961,7 @@ std::string buildEntityExtras(
             }
             auto const& mainHand = actor.getCarriedItem();
             if (!mainHand.isNull()) {
-                lines.push_back(
-                    textLine(langCode, "Main hand", localizeKey(langCode, mainHand.getDescriptionId()))
-                );
+                lines.push_back(textLine(langCode, "Main hand", localizeKey(langCode, mainHand.getDescriptionId())));
             }
             auto const& offHand = actor.getOffhandSlot();
             if (!offHand.isNull()) {
