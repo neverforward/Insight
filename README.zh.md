@@ -96,7 +96,7 @@
 
     "client": {
         "showOverlay": true,
-        "anchor": "bottom_center", // top_left/top_center/top_right/middle_left/center/middle_right/bottom_left/bottom_center/bottom_right
+        "anchor": "top_center",    // top_left/top_center/top_right/middle_left/center/middle_right/bottom_left/bottom_center/bottom_right
         "offsetX": 0.0,            // 屏幕宽度比例的水平偏移（正=从锚点向屏幕内侧）
         "offsetY": 0.0,            // 屏幕高度比例的纵向偏移（正=从锚点向屏幕内侧）
         "fontSize": 1.0,           // 字号倍率
@@ -106,7 +106,7 @@
         "textColor": "ffffff",     // 无颜色代码时的文字颜色（RRGGBB）
         "maxWidth": 0.0,           // 最大面板宽度占屏比，0 = 不限（超长自动换行）
         "hideOverlayInGui": true,  // 打开背包/箱子等界面时隐藏面板
-        "overlayOnRemote": "off",  // off=联机时隐藏本地面板（改由服务端推送）；on=联机也画
+        "overlayOnRemote": "on",   // on=联机也画本地面板；off=联机时隐藏
         "language": "zh_cn",       // zh_cn、en，或 auto（客户端报告了已支持的语言时才跟随）
         "keyOpenConfig": 73,       // 打开配置界面的快捷键（虚拟键码，0 = 不绑定）
         "keyToggleShow": 75        // 开关信息显示的快捷键（虚拟键码，0 = 不绑定）

@@ -99,7 +99,7 @@ The client can also edit the configuration in a screen instead of the chat:
 
     "client": {
         "showOverlay": true,
-        "anchor": "bottom_center", // top_left/top_center/top_right/middle_left/center/middle_right/bottom_left/bottom_center/bottom_right
+        "anchor": "top_center",    // top_left/top_center/top_right/middle_left/center/middle_right/bottom_left/bottom_center/bottom_right
         "offsetX": 0.0,            // horizontal offset as a fraction of the screen width (positive = inward from the anchor)
         "offsetY": 0.0,            // vertical offset as a fraction of the screen height (positive = inward from the anchor)
         "fontSize": 1.0,           // font scale
@@ -109,7 +109,7 @@ The client can also edit the configuration in a screen instead of the chat:
         "textColor": "ffffff",     // text colour (RRGGBB) when no colour code is used
         "maxWidth": 0.0,           // max panel width as a fraction of the screen, 0 = unlimited (long lines wrap)
         "hideOverlayInGui": true,  // hide the panel while an inventory / container screen is open
-        "overlayOnRemote": "off",  // off = hide the local panel online (the server pushes it); on = always draw
+        "overlayOnRemote": "on",   // on = always draw the local panel; off = hide it online (the server pushes it)
         "language": "zh_cn",       // zh_cn, en, or auto (follow the client when it reports a shipped language)
         "keyOpenConfig": 73,       // hotkey for the configuration screen (VK code, 0 = disabled)
         "keyToggleShow": 75        // hotkey to show/hide the info display (VK code, 0 = disabled)

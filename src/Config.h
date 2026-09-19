@@ -34,16 +34,15 @@ struct ClientOptions {
     bool showOverlay = true;
 
     // Anchor of the overlay on screen:
-    //   "top_left" "top_center" "top_right"
+    //   "top_left" "top_center" (default) "top_right"
     //   "middle_left" "center" "middle_right"
     //   "bottom_left" "bottom_center" "bottom_right"
-    std::string anchor = "bottom_center";
+    std::string anchor = "top_center";
 
-    // Extra offset for the anchor, as a fraction of the screen size. A positive
-    // value always moves the panel away from the edge it is anchored at, towards
-    // the middle of the screen (for centre anchors: right/down).
-    // (0.05 == 5% of screen width / height). Positive x moves right,
-    // positive y moves *up* (screen space is y-up in the Bedrock UI).
+    // Extra offset for the anchor, as a fraction of the screen size (0.05 == 5%
+    // of the screen). A positive value always moves the panel away from the edge
+    // it is anchored at, towards the middle of the screen (for centre anchors:
+    // right/down).
     float offsetX = 0.0f;
     float offsetY = 0.0f;
 
@@ -74,13 +73,13 @@ struct ClientOptions {
     std::string language = "zh_cn";
 
     // Overlay behaviour while connected to a remote (multiplayer) server:
-    //   "off" (default): auto-hide the local overlay when playing online -
-    //         container contents / furnace data / entity stats are
-    //         server-authoritative and cannot be read from the client anyway;
-    //         the server-side Insight pushes the info through its channel.
-    //   "on": always draw the overlay; online only data that the client
-    //         itself can see is shown.
-    std::string overlayOnRemote = "off";
+    //   "on" (default): always draw the local overlay; online only data the
+    //         client itself can see is shown, and a server-side Insight may
+    //         push its own channel on top of it.
+    //   "off": auto-hide the local overlay when playing online - container
+    //         contents / furnace data / entity stats are server-authoritative
+    //         and cannot be read from the client anyway.
+    std::string overlayOnRemote = "on";
 
     // Hide the overlay while a game UI screen (inventory, chest, pause, ...)
     // is open, like Jade does.
