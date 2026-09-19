@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cmath>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "mc/client/game/ClientInstance.h"
@@ -19,8 +20,6 @@
 #include "mc/deps/core/math/Color.h"
 #include "mc/deps/core/math/Vec3.h"
 #include "mc/deps/input/RectangleArea.h"
-#include "mc/deps/minecraft_renderer/resources/UIActorOffscreenCaptureDescription.h"
-#include "mc/deps/minecraft_renderer/resources/UIMeshOffscreenCaptureDescription.h"
 #include "mc/deps/minecraft_renderer/resources/UIStructureVolumeOffscreenCaptureDescription.h"
 #include "mc/deps/minecraft_renderer/resources/UIThumbnailMeshOffscreenCaptureDescription.h"
 #include "mc/locale/I18n.h"
@@ -252,7 +251,7 @@ std::string clientDimName(BlockSource const& region) {
     try {
         return region.getDimension().mName;
     } catch (...) {
-        return std::to_string(region.getDimensionId().value());
+        return std::to_string(static_cast<int>(region.getDimensionId()));
     }
 }
 
@@ -290,8 +289,9 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
         }
 
         auto const& screenContext = *manager->mScreenContext;
-        auto const* pos           = screenContext.tryGetBlockActorPos();
-        auto*       ownerActor    = screenContext.tryGetActor(); // non-null for entity containers
+        auto const& owner   = *screenContext.mOwner;
+        auto const* pos     = std::get_if<BlockPos>(&owner);
+        auto const* ownerId = std::get_if<ActorUniqueID>(&owner);
         if (dump) {
             logger.debug(
                 "[ctr] blockPos={}",
@@ -305,13 +305,6 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
         // LevelEntityContainer); barrel/shulker/crafter screens use their own
         // enum but the same key. The player's inventory models share this map,
         // so they are filtered out.
-        auto isBlockContainerEnum = [](int e) {
-            return e == static_cast<int>(ContainerEnumName::LevelEntityContainer)
-                || e == static_cast<int>(ContainerEnumName::BarrelContainer)
-                || e == static_cast<int>(ContainerEnumName::ShulkerBoxContainer)
-                || e == static_cast<int>(ContainerEnumName::CrafterLevelEntityContainer)
-                || e == static_cast<int>(ContainerEnumName::DynamicContainer);
-        };
         int bestFilled = -1;
         int bestSize   = 0;
         int bestTotal  = 0;
@@ -334,13 +327,11 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                     }
                 }
             }
-            int  enumName  = static_cast<int>(model->getContainerEnumName());
-            bool preferred = isBlockContainerEnum(enumName) || key == "container_items";
+            bool preferred = key == "container_items";
             if (dump) {
                 logger.debug(
-                    "[ctr]   model '{}' enum={} size={} filled={}{}",
+                    "[ctr]   model '{}' size={} filled={}{}",
                     key,
-                    enumName,
                     size,
                     filled,
                     preferred ? "  <-- live block container" : ""
@@ -352,11 +343,11 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                 bestTotal  = total;
             }
         }
-        if (!pos && ownerActor && bestFilled >= 0) {
+        if (!pos && ownerId && bestFilled >= 0) {
             // Container entities (chest/hopper minecart, boat with chest) are
             // keyed by their unique id instead of a block position.
             setLiveEntityContainerSnapshot(
-                static_cast<int64_t>(ownerActor->getOrCreateUniqueID().rawID),
+                static_cast<int64_t>(ownerId->rawID),
                 bestFilled,
                 bestSize,
                 bestTotal
@@ -366,7 +357,7 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                 bestFilled,
                 bestSize,
                 bestTotal,
-                static_cast<int64_t>(ownerActor->getOrCreateUniqueID().rawID)
+                static_cast<int64_t>(ownerId->rawID)
             );
         }
         if (pos && bestFilled >= 0) {
@@ -550,7 +541,7 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
         std::string lang = Insight::cfg().client.language;
         lang             = insight::resolveLanguageCode(lang, [] {
             try {
-                return std::string(getI18n().getCurrentLanguage()->getLanguageCode());
+                return getI18n().getCurrentLanguage()->getFullLanguageCode();
             } catch (...) {
                 return std::string{};
             }
@@ -688,7 +679,7 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
         std::string lang = cfg.client.language;
         lang             = insight::resolveLanguageCode(lang, [] {
             try {
-                return std::string(getI18n().getCurrentLanguage()->getLanguageCode());
+                return getI18n().getCurrentLanguage()->getFullLanguageCode();
             } catch (...) {
                 return std::string{};
             }

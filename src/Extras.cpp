@@ -22,6 +22,7 @@
 #include "mc/world/level/block/actor/BlockActorType.h"
 #include "mc/world/level/block/actor/ComparatorBlockActor.h"
 #include "mc/world/level/block/actor/DecoratedPotBlockActor.h"
+#include "mc/world/level/block/actor/component/IVanillaMainBlockActorComponent.h"
 #include "mc/world/level/block/actor/FlowerPotBlockActor.h"
 #include "mc/world/level/block/actor/ItemFrameBlockActor.h"
 #include "mc/world/level/block/actor/LecternBlockActor.h"
@@ -239,11 +240,23 @@ std::map<int64_t, ContainerSnapshot>& liveEntitySnapshots() {
 // ---------------------------------------------------------------------------
 // containers: slot scanning (data available server-side and in local worlds)
 // ---------------------------------------------------------------------------
+// 26.40 moved container access off BlockActor: an actor now hands out its "main
+// component", and that component owns the container. Every container actor
+// implements it (chest, barrel, hopper, furnace, brewing stand, ...), so this
+// stays engine-driven instead of listing block actor types.
+Container const* containerOf(BlockActor const* actor) {
+    if (!actor) {
+        return nullptr;
+    }
+    auto const* main = actor->_getMainComponent();
+    return main ? main->getContainer() : nullptr;
+}
+
 std::string chestLine(BlockActor const* be, BlockPos const& pos, std::string const& langCode) {
     if (!be) {
         return {};
     }
-    auto* c = be->getContainer();
+    auto* c = containerOf(be);
     if (!c) {
         return {};
     }
@@ -301,7 +314,7 @@ std::string machineLine(BlockActor const* be, BlockPos const& pos, std::string c
     if (!be) {
         return {};
     }
-    auto* c = be->getContainer();
+    auto* c = containerOf(be);
     if (!c) {
         return {};
     }
@@ -335,7 +348,7 @@ std::string firstItemName(BlockActor const* be, std::string const& langCode) {
     if (!be) {
         return {};
     }
-    auto* c = be->getContainer();
+    auto* c = containerOf(be);
     if (!c) {
         return {};
     }
@@ -355,7 +368,7 @@ bool isContainerBlock(IConstBlockSource const& region, BlockPos const& pos) {
         return false;
     }
     try {
-        return region.getBlock(pos).isContainerBlock();
+        return region.getBlock(pos).getBlockType().isContainerBlock();
     } catch (...) {
         return false;
     }
@@ -385,7 +398,7 @@ std::string comparatorLine(
     BlockActor const*        be,
     std::string const&       langCode
 ) {
-    if (be && be->isType(BlockActorType::Comparator)) {
+    if (be && be->getType() == BlockActorType::Comparator) {
         int signal = const_cast<ComparatorBlockActor*>(static_cast<ComparatorBlockActor const*>(be))->getOutputSignal();
         return valueLine(langCode, "Signal", signal);
     }
@@ -471,7 +484,7 @@ void miscStateLines(
     // A piston body has no state of its own, but its block actor tracks the
     // real animation state.
     std::optional<PistonState> pistonState;
-    if (be && be->isType(BlockActorType::PistonArm)) {
+    if (be && be->getType() == BlockActorType::PistonArm) {
         // mState is a small trivially copyable member, so TypedStorage resolves
         // to PistonState itself (no dereference needed).
         pistonState = static_cast<PistonBlockActor const*>(be)->mState;
@@ -541,7 +554,7 @@ void miscStateLines(
     // ---- enchanting table ------------------------------------------------
     // No state involved: the power comes from the bookshelves around it, so the
     // block actor type is what identifies the table.
-    if (be && be->isType(BlockActorType::EnchantingTable)) {
+    if (be && be->getType() == BlockActorType::EnchantingTable) {
         int power = 0;
         for (int dy = 0; dy <= 1; ++dy) {
             for (int dx = -2; dx <= 2; ++dx) {
@@ -584,15 +597,11 @@ void blockActorLines(
         return;
     }
 
-    if (be->isType(BlockActorType::Banner)) {
+    if (be->getType() == BlockActorType::Banner) {
         auto const* banner = static_cast<BannerBlockActor const*>(be);
-        // getPatternCount() is client-only in the SDK headers; the pattern
-        // vector itself is available on both platforms.
-#ifdef LL_PLAT_C
-        int count = banner->getPatternCount();
-#else
+        // 26.40 turned getPatternCount() into a static that expects a tag; the
+        // pattern vector is available on both platforms, so it is read directly.
         int count = static_cast<int>((*banner->mPatterns).size());
-#endif
         if (count > 0) {
             lines.push_back(valueLine(langCode, "Patterns", count));
         } else {
@@ -600,12 +609,11 @@ void blockActorLines(
         }
         return;
     }
-    if (be->isType(BlockActorType::DecoratedPot)) {
+    if (be->getType() == BlockActorType::DecoratedPot) {
         auto const* pot = static_cast<DecoratedPotBlockActor const*>(be);
         // The pot itself is the container (DecoratedPotBlockActor derives from
-        // Container) - BlockActor::getContainer() is NOT overridden for it, so
-        // the item has to be read through the actor's own container interface
-        // (getItem(0) / mContainedItem) instead.
+        // Container) and 26.40 exposes the item range through the actor's own
+        // container interface (getItem(0) / mContainedItem) instead.
         if (pot->getContainerSize() > 0) {
             auto const& stack = pot->getItem(0);
             if (stack.isNull()) {
@@ -618,7 +626,7 @@ void blockActorLines(
                 ));
             }
         }
-        auto const& sherds = pot->getSherdNames();
+        auto const& sherds = *pot->mSherdItemNames; // 26.40: was getSherdNames()
         int         custom = 0;
         for (auto const& s : sherds) {
             if (!s.empty() && s != "minecraft:brick") {
@@ -639,7 +647,7 @@ void blockActorLines(
         lines.push_back(valueLine(langCode, "Sherds", custom) + "/4");
         return;
     }
-    if (be->isType(BlockActorType::Shelf)) {
+    if (be->getType() == BlockActorType::Shelf) {
         auto const* shelf = static_cast<ShelfBlockActor const*>(be);
         // isSlotOccupied() is client-only; the container interface is shared.
         int used = 0;
@@ -651,9 +659,9 @@ void blockActorLines(
         lines.push_back(valueLine(langCode, "Items", used) + "/3");
         return;
     }
-    if (be->isType(BlockActorType::ItemFrame) || be->isType(BlockActorType::GlowItemFrame)) {
+    if (be->getType() == BlockActorType::ItemFrame || be->getType() == BlockActorType::GlowItemFrame) {
         auto const* frame = static_cast<ItemFrameBlockActor const*>(be);
-        auto const& item  = frame->getFramedItem();
+        auto const& item  = *frame->mItem; // 26.40: was getFramedItem()
         if (item.isNull()) {
             lines.push_back(textLine(langCode, "Displayed item", tr(langCode, "empty")));
         } else {
@@ -661,15 +669,15 @@ void blockActorLines(
         }
         return;
     }
-    if (be->isType(BlockActorType::Lectern)) {
+    if (be->getType() == BlockActorType::Lectern) {
         auto const* lectern = static_cast<LecternBlockActor const*>(be);
-        if (!lectern->hasBook()) {
+        if ((*lectern->mBook).isNull()) { // 26.40: was hasBook()
             lines.push_back(textLine(langCode, "Book", tr(langCode, "none")));
         } else {
             std::string name = firstItemName(be, langCode);
             lines.push_back(textLine(langCode, "Book", name.empty() ? tr(langCode, "has") : name));
-            int         page     = lectern->getPage();
-            int         total    = lectern->getTotalPages();
+            int         page     = static_cast<int>(lectern->mPage);       // 26.40: was getPage()
+            int         total    = static_cast<int>(lectern->mTotalPages); // 26.40: was getTotalPages()
             std::string pageText = std::to_string(page + 1);
             if (total > 0) {
                 pageText += "/" + std::to_string(total);
@@ -802,7 +810,7 @@ std::string buildBlockExtras(
         be = region.getBlockEntity(pos);
     }
 
-    if (opt.chest && be && be->getContainer() && isContainerBlock(region, pos)) {
+    if (opt.chest && be && containerOf(be) && isContainerBlock(region, pos)) {
         auto line = chestLine(be, pos, langCode);
         if (!line.empty()) {
             lines.push_back(line);
@@ -810,15 +818,15 @@ std::string buildBlockExtras(
     }
     // machine slots: the block actor type says whether this is a furnace-like
     // block or a brewing stand (engine enum, not a list of block ids)
-    if (opt.furnace && be && be->getContainer()
-        && (be->isType(BlockActorType::Furnace) || be->isType(BlockActorType::BlastFurnace)
-            || be->isType(BlockActorType::Smoker))) {
+    if (opt.furnace && be && containerOf(be)
+        && (be->getType() == BlockActorType::Furnace || be->getType() == BlockActorType::BlastFurnace
+            || be->getType() == BlockActorType::Smoker)) {
         auto line = machineLine(be, pos, langCode);
         if (!line.empty()) {
             lines.push_back(line);
         }
     }
-    if (opt.brewing && be && be->getContainer() && be->isType(BlockActorType::BrewingStand)) {
+    if (opt.brewing && be && containerOf(be) && be->getType() == BlockActorType::BrewingStand) {
         auto line = machineLine(be, pos, langCode);
         if (!line.empty()) {
             lines.push_back(line);
@@ -829,7 +837,7 @@ std::string buildBlockExtras(
         // A comparator reports through its block actor, everything else that
         // carries a redstone level (repeater, wire, pressure plate, target)
         // reports it as a block state - so neither branch needs a block id list.
-        if (be && be->isType(BlockActorType::Comparator)) {
+        if (be && be->getType() == BlockActorType::Comparator) {
             auto line = comparatorLine(region, pos, be, langCode);
             if (!line.empty()) {
                 lines.push_back(line);
@@ -843,8 +851,8 @@ std::string buildBlockExtras(
         blockActorLines(region, pos, typeName, langCode, be, lines);
         miscStateLines(region, pos, typeName, langCode, lines);
 
-        if (be && be->isType(BlockActorType::Music)) { // jukebox
-            if (auto* c = be->getContainer(); c && c->getContainerSize() > 0) {
+        if (be && be->getType() == BlockActorType::Music) { // jukebox
+            if (auto* c = containerOf(be); c && c->getContainerSize() > 0) {
                 auto const& item = c->getItem(0);
                 if (item.isNull()) {
                     lines.push_back("§7" + tr(langCode, "Record") + " §8-");
@@ -854,9 +862,10 @@ std::string buildBlockExtras(
                     );
                 }
             }
-        } else if (be && be->isType(BlockActorType::FlowerPot)) {
-            auto const* fp    = static_cast<FlowerPotBlockActor const*>(be);
-            auto const* plant = fp->getPlantItem();
+        } else if (be && be->getType() == BlockActorType::FlowerPot) {
+            auto const* fp = static_cast<FlowerPotBlockActor const*>(be);
+            // 26.40: getPlantItem() was replaced by the mPlant member.
+            auto const* plant = static_cast<Block const*>(fp->mPlant);
             if (plant) {
                 lines.push_back("§7" + tr(langCode, "Pot") + " §f" + localizeKey(langCode, plant->getDescriptionId()));
             }
@@ -902,10 +911,13 @@ std::string buildEntityExtras(
         int size   = 0;
         int filled = 0;
         int total  = 0;
-        if (auto container = actor.getEntityContext().tryGetComponent<ContainerComponent>()) {
-            size = container->getContainerSize();
+        if (auto component = actor.getEntityContext().tryGetComponent<ContainerComponent>()) {
+            // 26.40: the component no longer forwards the container interface
+            // itself, it holds the FillingContainer that does.
+            auto const& container = *component->mContainer;
+            size                  = container.getContainerSize();
             for (int i = 0; i < size; ++i) {
-                auto const& item = container->getItem(i);
+                auto const& item = container.getItem(i);
                 if (!item.isNull()) {
                     ++filled;
                     total += item.mCount;

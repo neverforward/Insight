@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
 
 #include "nlohmann/json.hpp"
 
@@ -53,15 +54,12 @@ void sendTextPacket(ServerPlayer& player, TextPacketType type, std::string const
 }
 
 void sendActionbar(ServerPlayer& player, std::string const& text) {
-    SetTitlePacket pkt;
-    pkt.mType              = SetTitlePacketPayload::TitleType::Actionbar;
-    pkt.mTitleText         = text;
-    pkt.mFilteredTitleText = text;
+    SetTitlePacket pkt(SetTitlePacketPayload::TitleType::Actionbar, text, std::optional<std::string>{text});
     pkt.mFadeInTime        = 0;
     pkt.mStayTime          = 0;
     pkt.mFadeOutTime       = 0;
     pkt.mXuid              = player.getXuid();
-    pkt.mPlatformOnlineId  = player.getPlatformOnlineId();
+    pkt.mPlatformOnlineId  = *player.mPlatformOnlineId; 
     player.sendNetworkPacket(pkt);
 }
 
@@ -96,7 +94,7 @@ std::string dimensionName(BlockSource const& region) {
     try {
         return region.getDimension().mName;
     } catch (...) {
-        return std::to_string(region.getDimensionId().value());
+        return std::to_string(static_cast<int>(region.getDimensionId()));
     }
 }
 

@@ -11,7 +11,7 @@ namespace insight {
 // covers water, lava and their flowing variants without an id list.
 bool isLiquidBlock(Block const& block) {
     try {
-        return block.getBlockType().getMaterial().isLiquid();
+        return static_cast<bool>(block.getMaterial().mLiquid);
     } catch (...) {
         return false;
     }

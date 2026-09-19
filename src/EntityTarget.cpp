@@ -57,12 +57,16 @@ EntityHit findLookEntity(BlockSource& region, Actor const* except, Vec3 const& f
     double fx = from.x, fy = from.y, fz = from.z;
     double dx = dir.x, dy = dir.y, dz = dir.z;
     AABB   bb(
-        static_cast<float>(std::min(fx, fx + dx * maxDist) - ex),
-        static_cast<float>(std::min(fy, fy + dy * maxDist) - ex),
-        static_cast<float>(std::min(fz, fz + dz * maxDist) - ex),
-        static_cast<float>(std::max(fx, fx + dx * maxDist) + ex),
-        static_cast<float>(std::max(fy, fy + dy * maxDist) + ex),
-        static_cast<float>(std::max(fz, fz + dz * maxDist) + ex)
+        Vec3{
+            static_cast<float>(std::min(fx, fx + dx * maxDist) - ex),
+            static_cast<float>(std::min(fy, fy + dy * maxDist) - ex),
+            static_cast<float>(std::min(fz, fz + dz * maxDist) - ex)
+        },
+        Vec3{
+            static_cast<float>(std::max(fx, fx + dx * maxDist) + ex),
+            static_cast<float>(std::max(fy, fy + dy * maxDist) + ex),
+            static_cast<float>(std::max(fz, fz + dz * maxDist) + ex)
+        }
     );
 
     double bestT  = 1e30;
