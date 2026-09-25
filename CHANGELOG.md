@@ -1,5 +1,4 @@
 # Changelog
-
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -9,10 +8,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      file (ffurrer2/extract-release-notes), so the version heading below has to
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
-## [0.1.0] - 2026-09-18
-
+## [0.2.0] - 2026-09-25
 ### Added
+- Per-block extra info with **one switch per adapter** (`extras.*`), so every line can be silenced on
+  its own - in the configuration screen or with `/insight set extras.<name> true`: breaking time,
+  explosion resistance, container occupancy, chiseled bookshelf, shelf, lectern, decorated pot,
+  brewing stand, the furnace family, jukebox record, sign text (front and back), banner patterns,
+  item frame, flower pot, painting, piston, redstone level / repeater / comparator, dispenser,
+  candle, respawn anchor, and a `misc` group covering doors, trapdoors, fence gates, buttons,
+  levers, tripwire hooks, observers, sea pickles, cake, composters, beds, enchanting tables, bee
+  nests, beacons, campfires and the crafter (its two states and its disabled slots).
+- Cooking timers (furnace / blast furnace / smoker, brewing stand, campfire) keep running while no
+  container screen is open: the client keeps the last value the engine sent and advances it
+  locally, moves on to the next item by itself and hides the lines once every item it knew about has
+  finished. Fuel running out, or a hopper refilling while nobody looks, is the one thing a client
+  cannot see, so the estimate may drift until the screen is opened again.
+- The client registers a command of its own, `/cliinsight`, with `toggle` / `on` / `off` next to
+  `status` / `reload` / `set` / `gui`. The switch flips `client.showOverlay` through the same path
+  as the hotkey, so command and key always agree and both persist the change, and the status line
+  reports the display state.
+- The command description is localized (`Insight's main command`); unlike the messages it is
+  translated once, when the command is registered.
 
+### Changed
+- Requires **LeviLamina 26.40.\*** (Bedrock 26.40); the sources no longer compile against 26.20.
+- The client command is named `/cliinsight` rather than `/insight`, so a client and a server install
+  can coexist: joining a world merges the server's command list into the client registry, which
+  would otherwise make the two clash.
+- Defaults: `client.anchor` is `top_center` (was `bottom_center`) and `client.overlayOnRemote` is
+  `on` (was `off`). Defaults only apply to new or incomplete config files.
+- Higher `Config` schema version (3), because every extras adapter became a field of its own;
+  existing files are merged automatically.
+- Furnaces report only the item that is in the fire (`Time left Ns`, `Cook progress N%`), and the
+  percentage uses that machine's own cook time - 200 ticks in a furnace, 100 in a blast furnace or
+  smoker - instead of assuming a furnace everywhere.
+
+### Removed
+- The note block pitch/instrument and the ignite chance extras: neither is reachable through the
+  26.40 API, so their switches were removed together with the code instead of showing guessed
+  values.
+
+### Fixed
+- `/insight` was unknown on a dedicated server even though the mod was enabled: LeviLamina publishes
+  its command-registration event while the server instance is still being built, but enables mods
+  later, so the command is now registered directly when the mod is enabled (with a log line to
+  confirm it).
+- The crafter showed only one of its two states - `triggered` is the Java spelling while Bedrock
+  calls it `triggered_bit` - and its disabled slots were read from a state that does not exist
+  (they live in the block entity).
+- Switching one extras adapter off could take unrelated lines down with it: turning banners off also
+  silenced the furnace readout, the brewing percentage and the beehive, beacon and campfire lines.
+- `/insight gui` no longer exists on the server, where it could only answer that the screen is
+  client-side. The subcommand is registered only where there is a screen to open.
+
+## [0.1.0] - 2026-09-18
+### Added
 - Client configuration screen (Dear ImGui), opened with `/insight gui` or a hotkey and modal while it
   is open: every option in grouped sections with an inline editor (switch, slider, combo box,
   multi-line text, key binding), the appearance settings, a live preview of the panel, a status line
@@ -23,7 +73,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the anchor positions are shown as translated labels instead of their raw tokens.
 
 ### Changed
-
 - The configuration screen takes its input from Dear ImGui's Win32 backend through a window-procedure
   hook, so clicking, dragging, scrolling and text editing behave like a normal desktop window. While
   it is open the game receives neither mouse nor keyboard messages, and raw mouse input no longer
@@ -46,12 +95,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically.
 
 ### Removed
-
 - The first, engine-event based input path of the configuration screen (cursor mapping, synthetic
   clicks and the software cursor) together with the debug output used while working on it.
 
 ### Fixed
-
 - Changing one option could make every further change do nothing (the queued edits were applied after
   the "mod or overlay switched off" shortcut that editing those very options triggers).
 - Two edits made between two ticks of the game thread could drop the earlier one; edits are queued
@@ -65,23 +112,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enum options showed their raw tokens (`top_left`, `on`) instead of a readable, translated label.
 
 ## [0.0.3] - 2026-09-16
-
 ### Fixed
-
 - fixed tooth.json
 
 ## [0.0.2] - 2026-09-13
-
 ### Fixed
-
 - fixed tooth.json
 
 ## [0.0.1] - 2026-09-12
-
 First release: the mod template has been turned into the actual mod.
 
 ### Added
-
 - Server build (BDS) that samples every online player's look ray on a fixed cadence and sends the
   formatted info to that player only, through a configurable channel
   (`actionbar` / `tip` / `popup` / `jukebox` / `system` / `chat` / `none`).
@@ -112,16 +153,15 @@ First release: the mod template has been turned into the actual mod.
   Chinese.
 
 ### Changed
-
 - Detection is data-driven: the engine is asked directly (health attribute,
   `Block::isContainerBlock()`, material liquids, block actor types, block states, dimension name)
   instead of the mod keeping lists of block and entity ids.
 - Documentation is user-facing; implementation notes live in code comments.
 
 ### Removed
-
 - The mod template leftovers (`src/mod/MyMod.*`).
 
+[0.2.0]: https://github.com/neverforward/Insight/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/neverforward/Insight/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/neverforward/Insight/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/neverforward/Insight/compare/v0.0.1...v0.0.2

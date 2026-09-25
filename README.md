@@ -6,7 +6,7 @@
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/neverforward/Insight/build.yml?style=for-the-badge)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/y/neverforward/Insight?style=for-the-badge)
 
- **info display** mod for Minecraft Bedrock Edition (LeviLamina 26.20.*): it shows what you are looking at in real time - name, type, coordinates, distance, container contents, block states, ...
+ **info display** mod for Minecraft Bedrock Edition (LeviLamina 26.40.*): it shows what you are looking at in real time - name, type, coordinates, distance, container contents, block states, ...
 
 
 ## Installation

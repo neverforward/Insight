@@ -7,7 +7,7 @@
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/neverforward/Insight/build.yml?style=for-the-badge)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/y/neverforward/Insight?style=for-the-badge)
 
-一个 Minecraft 基岩版（LeviLamina 26.20.*）的**信息显示**模组：实时显示玩家准星所指方块的信息（名称、类型、坐标、距离、容器内容、方块状态……）。
+一个 Minecraft 基岩版（LeviLamina 26.40.*）的**信息显示**模组：实时显示玩家准星所指方块的信息（名称、类型、坐标、距离、容器内容、方块状态……）。
 
 ## 安装
 
