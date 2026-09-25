@@ -64,7 +64,7 @@ The client can also edit the configuration in a screen instead of the chat:
 
 ```jsonc
 {
-    "version": 2,                  // schema version; older files are merged automatically
+    "version": 3,                  // schema version; older files are merged automatically
 
     "enabled": true,               // master switch
     "enabledByDefault": true,      // default for players; they can toggle it with /insight
@@ -83,11 +83,29 @@ The client can also edit the configuration in a screen instead of the chat:
 
     "extras": {                    // per-block extras (shown where {extras} appears)
         "enabled": true,           // master switch
+        "hardness": true,          // breaking time of every block
+        "blastResistance": true,   // explosion resistance
         "chest": true,             // container occupancy: items 12/27
-        "furnace": true,           // furnace / blast furnace / smoker slots
+        "bookshelf": true,         // chiseled bookshelf books
+        "shelf": true,             // shelf contents
+        "lectern": true,           // lectern book + page
+        "pot": true,               // decorated pot item + sherds
         "brewing": true,           // brewing stand slots
-        "redstone": true,          // redstone signal strength
-        "misc": true               // block states and block-entity info
+        "furnace": true,           // furnace / blast furnace / smoker slots
+        "jukebox": true,           // record being played
+        "sign": true,              // sign text
+        "banner": true,            // banner patterns
+        "itemFrame": true,         // framed item
+        "flowerPot": true,         // flower pot plant
+        "painting": true,          // which painting is hanging there
+        "piston": true,            // piston state
+        "redstone": true,          // wire, plates, levers, ... strength
+        "repeater": true,          // repeater delay + signal
+        "comparator": true,        // comparator signal
+        "dispenser": true,         // dispenser / dropper state
+        "candle": true,            // candles: how many, lit or not
+        "respawnAnchor": true,     // charge level
+        "misc": true               // remaining block states
     },
 
     "entityEnabled": true,         // also show entities under the crosshair
@@ -151,24 +169,36 @@ Put `{extras}` anywhere in `format` to append the extra lines (middle or end, ei
 | `extras.redstone` | comparator, redstone wire / repeater, pressure plate, target: `Signal 12` |
 | `extras.misc` | block states and block-entity info, see below |
 
-What `extras.misc` covers:
+Every line below belongs to the switch named after it (`extras.hardness`, `extras.banner`,
+`extras.sign`, `extras.furnace`, `extras.brewing`, ...). `extras.misc` is the master switch for the
+plain block states and also owns the block-entity lines that have no switch of their own (beehives,
+beacons, campfires, beds, enchanting tables). What they all show:
 
 - Doors / trapdoors / fence gates: `State open/closed` (a `Powered` line is added while powered)
 - Buttons: `State pressed/released`; levers: `State open/closed`; tripwire hooks: `Connected`, `Powered`
 - Observers: `Powered yes/no`
 - Pistons / sticky pistons: `State extended/retracted` (and `extending` / `retracting` while animating); piston arms: `Piston normal/sticky` + `State extended`
-- Crafters: `State crafting/idle`, `Triggered`, `Disabled slots n`
+- Crafters: `State crafting/idle` and `Triggered yes/no` (the crafter's two own states - Bedrock spells the second one `triggered_bit`), both under `extras.misc`, plus `Disabled slots n` read from the block entity
 - Sea pickles: `Count n`
-- Cake: `Slices n/7`; composters: `Compost n/8`; note blocks: `Note n/25`
+- Cake: `Slices n/7`; composters: `Compost n/8`
+- Furnaces / blast furnaces / smokers: `Time left Ns` (what is left of the item currently cooking) and `Cook progress N%`; only the item in the fire is reported, and the countdown walks on to the next item by itself. The engine only details a block entity to a client while its screen is open, so the client counts on from the last value it was sent: fuel running out, or a hopper refilling while nobody looks, can make it drift until the furnace is opened again
+- Brewing stands: `Brewing N%` (kept counting between screen opens the same way) and `Fuel n/m`
+- Bee nests / beehives: `Bees n/3` (plus `Honey level n/5` from the block state)
+- Beacons: `Beacon level n`
+- Campfires: `Cooking <item> Ns/30s` (time left, kept counting the same way) for every item being cooked
+- Beds: `Occupied yes/no`
 - Enchanting tables: `Enchant power n` (bookshelf power, capped at 15)
-- Banners: `Patterns n`; decorated pots: `Items <item> ×n` and `Sherds n/4`; shelves: `Items n/3`; item frames: `Displayed item <item>`
-- Lecterns: `Book <item>`, `Page p/total`
+- Banners: `Patterns n`; decorated pots: `Items <item> ×n` and `Sherds n/4`; shelves: `Items n/3`; item frames: `Displayed item <item>` and `Rotation N°`
+- Lecterns: `Book <item>`, `Page p/total`; signs: `Text <front>` and `Text (back) <back>`
 - Equipment of any entity that carries some (armor stands, players, armored mobs): `Helmet` / `Chestplate` / `Leggings` / `Boots`, `Main hand`, `Off hand`
 
 **Data completeness**: container and block-entity info is complete on the **server and in local
 single-player**; a client connected to a remote server cannot read other players' containers, so
-those lines stay empty instead of failing. Not covered yet: text contents (signs, command blocks),
-mob spawners, crop growth stages.
+those lines stay empty instead of failing. Cooking timers (furnace, brewing stand, campfire) are
+extrapolated locally from the last value the client was sent, so they keep ticking while the screen
+is closed and self-correct as soon as a real value arrives. Not covered yet: command blocks, mob spawners, crop
+growth stages, and the note block (its pitch and instrument are not reachable through the 26.40
+API; the option was removed rather than showing a guessed value).
 
 ## Language
 

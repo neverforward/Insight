@@ -93,18 +93,47 @@ struct ClientOptions {
     int keyToggleShow = 0x4B; // show/hide the info display
 };
 
-// Per-block-type extra info adapters (everything can be switched off
-// individually). Data availability differs by platform: containers and block
-// entities exist server-side and in a local (single player) client world; on
-// a client connected to a remote server only local world data is visible, so
-// some adapters may silently show nothing there.
+// Per-block extra info adapters. Every adapter has its own switch, so a line a
+// player does not care about can be silenced without losing the others;
+// `enabled` gates all of them. Data availability differs by platform: containers
+// and block entities exist server-side and in a local (single player) client
+// world; on a client connected to a remote server only local world data is
+// visible, so some adapters may silently show nothing there.
 struct BlockExtrasConfig {
-    bool enabled  = true; // master switch for all adapters below
-    bool chest    = true; // container occupancy (chest/barrel/hopper/…): filled slots/total
-    bool furnace  = true; // furnace / blast furnace / smoker slot usage
-    bool brewing  = true; // brewing stand slot usage
-    bool redstone = true; // comparator output signal
-    bool misc     = true; // jukebox record + flower pot plant
+    bool enabled = true; // master switch for every adapter below
+
+    // --- every block ------------------------------------------------------
+    bool hardness        = true; // breaking time
+    bool blastResistance = true; // explosion resistance
+
+    // --- containers -------------------------------------------------------
+    bool chest     = true; // chest, barrel, hopper, dispenser, shulker box, ...
+    bool bookshelf = true; // chiseled bookshelf books
+    bool shelf     = true; // shelf contents
+    bool lectern   = true; // lectern book and page
+    bool pot       = true; // decorated pot item and sherds
+    bool brewing   = true; // brewing stand slots
+    bool furnace   = true; // furnace / blast furnace / smoker slots
+
+    // --- block entities ---------------------------------------------------
+    bool jukebox   = true; // record being played
+    bool sign      = true; // sign text
+    bool banner    = true; // banner patterns
+    bool itemFrame = true; // framed item
+    bool flowerPot = true; // flower pot plant
+    bool painting  = true; // which painting an entity shows
+    bool piston    = true; // piston state
+
+    // --- redstone ---------------------------------------------------------
+    bool redstone      = true; // wire, plates, levers, ...: signal strength
+    bool repeater      = true; // repeater delay and signal
+    bool comparator    = true; // comparator signal
+    bool dispenser     = true; // dispenser / dropper state
+    bool candle        = true; // candles: how many, lit or not
+    bool respawnAnchor = true; // charge level
+
+    // --- everything else --------------------------------------------------
+    bool misc = true; // remaining block states (composter, cake, sea pickles, ...)
 };
 
 struct Config {
@@ -113,8 +142,9 @@ struct Config {
     // existing file when this number differs from the file's "version", so a
     // new field without a bump makes deserialization fail ("missing required
     // field") and the mod refuses to load. 1 -> 2: added the client key
-    // bindings (keyOpenConfig / keyToggleShow).
-    int version = 2;
+    // bindings (keyOpenConfig / keyToggleShow). 2 -> 3: every extras adapter got
+    // its own switch (BlockExtrasConfig).
+    int version = 3;
 
     // Master switch for the whole mod.
     bool enabled = true;

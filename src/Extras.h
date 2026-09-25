@@ -11,6 +11,8 @@
 
 // Global forward declaration: the entity extras take the engine's Actor.
 class Actor;
+class BlockActor;
+class Container;
 
 namespace insight {
 
@@ -50,6 +52,11 @@ void setLiveContainerSnapshot(BlockPos const& pos, int filled, int total, int to
 // Same as above for entity containers (chest/hopper minecart, boat with
 // chest), keyed by the actor's unique id.
 void setLiveEntityContainerSnapshot(int64_t actorId, int filled, int total, int totalCount);
+
+// Container a block actor owns (26.40 keeps it on the actor's main component).
+// Exported because the client's live-snapshot code needs the same lookup to
+// recognise which of a screen's container models belongs to the block.
+[[nodiscard]] Container const* blockContainerOf(BlockActor const* actor);
 
 // Debug helper: "state=value,state=value" for every state of the block at
 // `pos` (used by the debug log to calibrate state names).

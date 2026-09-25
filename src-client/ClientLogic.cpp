@@ -289,9 +289,9 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
         }
 
         auto const& screenContext = *manager->mScreenContext;
-        auto const& owner   = *screenContext.mOwner;
-        auto const* pos     = std::get_if<BlockPos>(&owner);
-        auto const* ownerId = std::get_if<ActorUniqueID>(&owner);
+        auto const& owner         = *screenContext.mOwner;
+        auto const* pos           = std::get_if<BlockPos>(&owner);
+        auto const* ownerId       = std::get_if<ActorUniqueID>(&owner);
         if (dump) {
             logger.debug(
                 "[ctr] blockPos={}",
@@ -305,6 +305,46 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
         // LevelEntityContainer); barrel/shulker/crafter screens use their own
         // enum but the same key. The player's inventory models share this map,
         // so they are filtered out.
+        // Which model is the block's own container? Matching the key only worked
+        // for chests: a brewing stand screen keys its model differently, so its
+        // panel kept showing the stale world copy (the "brewing stand never
+        // updates" bug). The block's container tells us how many slots the model
+        // must have, which identifies it whatever it is called.
+        int blockSlots = -1;
+        if (pos) {
+            if (auto const* blockActor = screenContext.tryGetBlockActor()) {
+                if (auto const* container = blockContainerOf(blockActor)) {
+                    blockSlots = container->getContainerSize();
+                }
+            }
+            if (blockSlots < 0) {
+                // some screens (brewing stands) do not hand out their block actor;
+                // the block's own container still says how many slots the model
+                // must have, which is all that is needed to recognise it
+                if (auto* region = client.getRegion()) {
+                    if (auto const* container = blockContainerOf(region->getBlockEntity(*pos))) {
+                        blockSlots = container->getContainerSize();
+                    }
+                }
+            }
+        }
+        // Some screens spread the block's slots over several models: a brewing
+        // stand has one for the fuel, one for the input and one for the results
+        // (brewing_fuel_item / brewing_input_item / brewing_result_items). Their
+        // keys start with the screen's own name ("brewing_stand_screen" ->
+        // "brewing"), which is engine naming, and their sizes add up to the
+        // block's slot count - so they are summed and matched as one container.
+        std::string screenPrefix = screenName;
+        if (auto cut = screenPrefix.find("_screen"); cut != std::string::npos) {
+            screenPrefix.resize(cut);
+        }
+        if (auto cut = screenPrefix.find('_'); cut != std::string::npos) {
+            screenPrefix.resize(cut);
+        }
+        int splitFilled = 0;
+        int splitSize   = 0;
+        int splitTotal  = 0;
+
         int bestFilled = -1;
         int bestSize   = 0;
         int bestTotal  = 0;
@@ -327,7 +367,12 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                     }
                 }
             }
-            bool preferred = key == "container_items";
+            if (!screenPrefix.empty() && key.rfind(screenPrefix, 0) == 0) {
+                splitSize   += size;
+                splitFilled += filled;
+                splitTotal  += total;
+            }
+            bool preferred = key == "container_items" || (blockSlots > 0 && size == blockSlots);
             if (dump) {
                 logger.debug(
                     "[ctr]   model '{}' size={} filled={}{}",
@@ -343,15 +388,18 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                 bestTotal  = total;
             }
         }
+        // a container the screen split into pieces wins over the single-model
+        // guess when its total is exactly the block's slot count (or when nothing
+        // else was recognised at all)
+        if (splitSize > 0 && ((blockSlots > 0 && splitSize == blockSlots) || bestFilled < 0)) {
+            bestSize   = splitSize;
+            bestFilled = splitFilled;
+            bestTotal  = splitTotal;
+        }
         if (!pos && ownerId && bestFilled >= 0) {
             // Container entities (chest/hopper minecart, boat with chest) are
             // keyed by their unique id instead of a block position.
-            setLiveEntityContainerSnapshot(
-                static_cast<int64_t>(ownerId->rawID),
-                bestFilled,
-                bestSize,
-                bestTotal
-            );
+            setLiveEntityContainerSnapshot(static_cast<int64_t>(ownerId->rawID), bestFilled, bestSize, bestTotal);
             logger.debug(
                 "[ctr] entity snapshot -> {}/{} total {} (actor {})",
                 bestFilled,
@@ -693,7 +741,11 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             auto entHit = findLookEntity(region, &*localPlayer, origin, dir, cfg.maxDistance);
             entity      = entHit.actor;
             entityDist  = entHit.distance;
-            if (entity && entityDist > (hit ? hit->distance : 1e30)) {
+            // A painting or an item frame hangs on the block face, so its hit
+            // distance equals the block's: it has to win that tie or its extras
+            // are never reached. Anything hidden behind a block is at least a
+            // block away, so a small tolerance cannot pick up the wrong entity.
+            if (entity && entityDist > (hit ? hit->distance + 0.1 : 1e30)) {
                 entity = nullptr; // the block in front wins
             }
         }

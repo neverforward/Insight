@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <Windows.h> // virtual-key codes
@@ -230,10 +231,65 @@ struct Row {
 
 std::string boolText(std::string const& locale, bool value) { return value ? tr(locale, "On") : tr(locale, "Off"); }
 
+// Every boolean option in one table. A row whose value cannot be read renders as
+// an unchecked box that then refuses to turn off (it only ever queues "true"), so
+// every switch has to be listed here - the extras block alone has two dozen.
+bool const* findBoolOption(std::string const& option) {
+    auto const& cfg = Insight::cfg();
+    struct Entry {
+        std::string_view name;
+        bool const*      value;
+    };
+    static Entry const table[] = {
+        {"enabled",                &cfg.enabled                },
+        {"passThroughLiquids",     &cfg.passThroughLiquids     },
+        {"showEmpty",              &cfg.showEmpty              },
+        {"entityEnabled",          &cfg.entityEnabled          },
+        {"showOverlay",            &cfg.client.showOverlay     },
+        {"hideOverlayInGui",       &cfg.client.hideOverlayInGui},
+        {"background",             &cfg.client.background      },
+        {"shadow",                 &cfg.client.shadow          },
+        {"extras.enabled",         &cfg.extras.enabled         },
+        {"extras.hardness",        &cfg.extras.hardness        },
+        {"extras.blastResistance", &cfg.extras.blastResistance },
+        {"extras.chest",           &cfg.extras.chest           },
+        {"extras.bookshelf",       &cfg.extras.bookshelf       },
+        {"extras.shelf",           &cfg.extras.shelf           },
+        {"extras.lectern",         &cfg.extras.lectern         },
+        {"extras.pot",             &cfg.extras.pot             },
+        {"extras.brewing",         &cfg.extras.brewing         },
+        {"extras.furnace",         &cfg.extras.furnace         },
+        {"extras.jukebox",         &cfg.extras.jukebox         },
+        {"extras.sign",            &cfg.extras.sign            },
+        {"extras.banner",          &cfg.extras.banner          },
+        {"extras.itemFrame",       &cfg.extras.itemFrame       },
+        {"extras.flowerPot",       &cfg.extras.flowerPot       },
+        {"extras.painting",        &cfg.extras.painting        },
+        {"extras.piston",          &cfg.extras.piston          },
+        {"extras.redstone",        &cfg.extras.redstone        },
+        {"extras.repeater",        &cfg.extras.repeater        },
+        {"extras.comparator",      &cfg.extras.comparator      },
+        {"extras.dispenser",       &cfg.extras.dispenser       },
+        {"extras.candle",          &cfg.extras.candle          },
+        {"extras.respawnAnchor",   &cfg.extras.respawnAnchor   },
+        {"extras.misc",            &cfg.extras.misc            },
+    };
+    for (auto const& entry : table) {
+        if (option == entry.name) {
+            return entry.value;
+        }
+    }
+    return nullptr;
+}
+
 std::string currentValueText(Row const& row, std::string const& locale) {
     auto const& cfg = Insight::cfg();
 
     if (row.kind == Kind::Bool) {
+        // table first, so a switch that was added later still reports its state
+        if (auto const* value = findBoolOption(row.option)) {
+            return boolText(locale, *value);
+        }
         if (row.option == "enabled") {
             return boolText(locale, cfg.enabled);
         }
@@ -795,14 +851,56 @@ void ConfigUi::draw() {
     drawSection(
         "Extras",
         {
-            {"Extras (all)",   "extras.enabled",  Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Containers",     "extras.chest",    Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Furnaces",       "extras.furnace",  Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Brewing stands", "extras.brewing",  Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Redstone",       "extras.redstone", Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Block states",   "extras.misc",     Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Extras (all)",         "extras.enabled",         Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Breaking time",        "extras.hardness",        Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Explosion resistance", "extras.blastResistance", Kind::Bool, 0.0f, 0.0f, false, {}},
     },
         100
+    );
+    drawSection(
+        "Containers",
+        {
+            {"Containers",     "extras.chest",     Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Bookshelf",      "extras.bookshelf", Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Shelf",          "extras.shelf",     Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Lectern",        "extras.lectern",   Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Pot",            "extras.pot",       Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Brewing stands", "extras.brewing",   Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Furnaces",       "extras.furnace",   Kind::Bool, 0.0f, 0.0f, false, {}},
+    },
+        120
+    );
+    drawSection(
+        "Block entities",
+        {
+            {"Jukebox",    "extras.jukebox",   Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Sign",       "extras.sign",      Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Banner",     "extras.banner",    Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Item frame", "extras.itemFrame", Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Flower pot", "extras.flowerPot", Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Painting",   "extras.painting",  Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Piston",     "extras.piston",    Kind::Bool, 0.0f, 0.0f, false, {}},
+    },
+        140
+    );
+    drawSection(
+        "Redstone",
+        {
+            {"Redstone",        "extras.redstone",      Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Repeaters",       "extras.repeater",      Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Comparators",     "extras.comparator",    Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Dispensers",      "extras.dispenser",     Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Candles",         "extras.candle",        Kind::Bool, 0.0f, 0.0f, false, {}},
+            {"Respawn anchors", "extras.respawnAnchor", Kind::Bool, 0.0f, 0.0f, false, {}},
+    },
+        160
+    );
+    drawSection(
+        "Block states",
+        {
+            {"Block states", "extras.misc", Kind::Bool, 0.0f, 0.0f, false, {}},
+    },
+        180
     );
     drawSection(
         "Keys",

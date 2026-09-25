@@ -99,7 +99,11 @@ bool parseBool(std::string const& value, bool& out) {
         out = true;
         return true;
     }
-    if (v == "false" || v == "0" || v == "no" || v == "off") {
+    if (v == "false"
+        || v
+
+               == "0"
+        || v == "no" || v == "off") {
         out = false;
         return true;
     }
@@ -313,24 +317,44 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
         return setKeyCode(gConfig.client.keyToggleShow, "keyToggleShow");
     }
 
-    // --- extras adapters --------------------------------------------------
-    if (lower == "extras.enabled") {
-        return setBool(gConfig.extras.enabled, "extras.enabled");
-    }
-    if (lower == "extras.chest") {
-        return setBool(gConfig.extras.chest, "extras.chest");
-    }
-    if (lower == "extras.furnace") {
-        return setBool(gConfig.extras.furnace, "extras.furnace");
-    }
-    if (lower == "extras.brewing") {
-        return setBool(gConfig.extras.brewing, "extras.brewing");
-    }
-    if (lower == "extras.redstone") {
-        return setBool(gConfig.extras.redstone, "extras.redstone");
-    }
-    if (lower == "extras.misc") {
-        return setBool(gConfig.extras.misc, "extras.misc");
+    // --- extras adapters: one switch per adapter (see BlockExtrasConfig) ---
+    {
+        struct ExtraSwitch {
+            char const* name;
+            bool*       target;
+        };
+        for (auto const& entry : {
+                 ExtraSwitch{"extras.enabled",         &gConfig.extras.enabled        },
+                 ExtraSwitch{"extras.hardness",        &gConfig.extras.hardness       },
+                 ExtraSwitch{"extras.blastResistance", &gConfig.extras.blastResistance},
+                 ExtraSwitch{"extras.chest",           &gConfig.extras.chest          },
+                 ExtraSwitch{"extras.bookshelf",       &gConfig.extras.bookshelf      },
+                 ExtraSwitch{"extras.shelf",           &gConfig.extras.shelf          },
+                 ExtraSwitch{"extras.lectern",         &gConfig.extras.lectern        },
+                 ExtraSwitch{"extras.pot",             &gConfig.extras.pot            },
+                 ExtraSwitch{"extras.brewing",         &gConfig.extras.brewing        },
+                 ExtraSwitch{"extras.furnace",         &gConfig.extras.furnace        },
+                 ExtraSwitch{"extras.jukebox",         &gConfig.extras.jukebox        },
+                 ExtraSwitch{"extras.sign",            &gConfig.extras.sign           },
+                 ExtraSwitch{"extras.banner",          &gConfig.extras.banner         },
+                 ExtraSwitch{"extras.itemFrame",       &gConfig.extras.itemFrame      },
+                 ExtraSwitch{"extras.flowerPot",       &gConfig.extras.flowerPot      },
+                 ExtraSwitch{"extras.painting",        &gConfig.extras.painting       },
+                 ExtraSwitch{"extras.piston",          &gConfig.extras.piston         },
+                 ExtraSwitch{"extras.redstone",        &gConfig.extras.redstone       },
+                 ExtraSwitch{"extras.repeater",        &gConfig.extras.repeater       },
+                 ExtraSwitch{"extras.comparator",      &gConfig.extras.comparator     },
+                 ExtraSwitch{"extras.dispenser",       &gConfig.extras.dispenser      },
+                 ExtraSwitch{"extras.candle",          &gConfig.extras.candle         },
+                 ExtraSwitch{"extras.respawnAnchor",   &gConfig.extras.respawnAnchor  },
+                 ExtraSwitch{"extras.misc",            &gConfig.extras.misc           },
+        }) {
+            // the option arrives lower-cased; the table keeps the canonical
+            // spelling so logs and messages show it as documented
+            if (lower == util::toLower(entry.name)) {
+                return setBool(*entry.target, entry.name);
+            }
+        }
     }
 
     return {false, tr(localeCode, "Unknown option: {0}", option)};
