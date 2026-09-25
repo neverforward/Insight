@@ -451,10 +451,20 @@ bool ClientLogic::enable() {
     mListeners.emplace_back(bus.emplaceListener<ll::event::render::BeforeUIRenderEvent>(
         [this](ll::event::render::BeforeUIRenderEvent& event) { onRender(event); }
     ));
-    // /insight on the client: status / reload / set <option> <value> / gui
-    mListeners.emplace_back(bus.emplaceListener<ll::event::command::ClientCommandRegisterEvent>([](auto&) {
-        registerInsightCommand(true, nullptr, [] { ConfigUi::instance().setVisible(true); });
-    }));
+    // /cliinsight on the client: status / toggle / on / off / reload / set / gui.
+    // on/off/toggle flip `showOverlay`, the same value the hotkey writes, so the
+    // command and the key stay in sync and both persist the change.
+    auto const toggle = [](Player&) -> bool {
+        auto const& cfg = Insight::cfg();
+        (void)Insight::applyConfigEdit("showOverlay", cfg.client.showOverlay ? "false" : "true", {});
+        // report what the config actually says, not what we asked for
+        return Insight::cfg().client.showOverlay;
+    };
+    mListeners.emplace_back(bus.emplaceListener<ll::event::command::ClientCommandRegisterEvent>(
+        [toggle](auto&) {
+            registerInsightCommand(true, toggle, [] { ConfigUi::instance().setVisible(true); });
+        }
+    ));
 
     // configuration screen: the overlay draws it inside its ImGui frame
     mOverlay.setWindowDrawer([] { ConfigUi::instance().draw(); });

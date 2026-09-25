@@ -20,13 +20,18 @@ hot-reload it, or change values in game with `/insight set <option> <value>`.
 
 ## Commands
 
-`/insight` works on both sides (on the client you type it into the chat like any other command).
+The command is `/insight` on the server and **`/cliinsight`** in the client build. Joining a world
+merges the server's command list into the client registry and lets client mods register on top of it,
+so an unprefixed client-side `/insight` would collide with a server-side one when both installs are
+present - the `cli` prefix keeps them apart (the same convention as LeviLamina's own `/levilamina` vs
+`/clilevilamina`). The tree below is identical on both sides.
 
 ```
-/insight toggle          toggle your own display (server only; persisted)
-/insight on | off        same as above (server only)
-/insight status          show the current state (switch/interval/distance/channel or anchor/extras)
-/insight gui             open the configuration screen (client only)
+/insight toggle          switch the display on/off (server: your own switch, kept in the mod's data
+                         directory; client: the overlay switch, saved to the config file)
+/insight on | off        same as above
+/insight status          show the current state (switch/interval/distance/channel, or anchor/display/language/extras)
+/insight gui             open the configuration screen (client only; the server has no screen yet)
 /insight reload          re-read the configuration file (OP / operator)
 /insight set <option> <value>   change a setting in game and save it (OP / operator)
 ```
@@ -51,7 +56,7 @@ written when a player changes the switch away from its **default** value.
 
 The client can also edit the configuration in a screen instead of the chat:
 
-- open it with `/insight gui` or the hotkey (default <kbd>I</kbd>);
+- open it with `/cliinsight gui` or the hotkey (default <kbd>I</kbd>);
 - a second hotkey (default <kbd>K</kbd>) shows/hides the info display;
 - both bindings show up in the game's own key settings and can be remapped there - the config
   values `keyOpenConfig` / `keyToggleShow` are only the defaults (Windows virtual-key codes,

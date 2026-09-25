@@ -20,13 +20,16 @@
 
 ## 指令
 
-`/insight` 在服务端与客户端都可用（客户端在聊天栏输入同样生效）。
+服务端命令是 `/insight`，客户端是 `/cliinsight`。进入世界时客户端会把服务端的命令表
+并进本地命令表、再让客户端模组叠加注册，所以客户端若也叫 `/insight`，在两端都装了 Insight 时会互相顶掉；
+加 `cli` 前缀就能同时可用。
+两边的子命令完全一致。
 
 ```
-/insight toggle          开/关你自己的显示（仅服务端；会持久化）
-/insight on | off        同上（仅服务端）
-/insight status          查看当前状态（开关/间隔/距离/频道或锚点/extras）
-/insight gui             打开配置界面（仅客户端）
+/insight toggle          开/关显示（服务端：你自己的开关，存在模组数据目录；客户端：总开关，写入配置文件）
+/insight on | off        同上
+/insight status          查看当前状态（开关/间隔/距离/频道，或锚点/显示/语言/extras）
+/insight gui             打开配置界面（仅客户端；服务端暂无界面）
 /insight reload          重新读取配置文件（需要 OP/管理员）
 /insight set <选项> <值>   游戏内直接改配置并保存（需要 OP/管理员）
 ```
@@ -50,7 +53,7 @@
 
 客户端除了聊天栏指令，还可以用界面改配置：
 
-- 用 `/insight gui` 或快捷键打开（默认 <kbd>I</kbd>）；
+- 用 `/cliinsight gui` 或快捷键打开（默认 <kbd>I</kbd>）；
 - 另一个快捷键（默认 <kbd>K</kbd>）开关信息显示；
 - 两个按键都会出现在游戏自带的按键设置里、可在那里改键——配置里的 `keyOpenConfig` /
   `keyToggleShow` 只是默认值（Windows 虚拟键码，`0` 表示不绑定）；

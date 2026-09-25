@@ -178,21 +178,38 @@ bool ServerLogic::enable() {
         }
     ));
 
-    // /insight command (registered when the engine is ready for it); shared
-    // command tree, plus the per-player on/off/toggle switches
-    mListeners.emplace_back(bus.emplaceListener<ll::event::command::ServerCommandRegisterEvent>([](auto&) {
-        registerInsightCommand(
-            false,
-            [](Player& player) -> bool {
-                auto& sp   = *static_cast<ServerPlayer*>(&player);
-                bool   cur = settings::getEnabled(sp.getUuid().asString()).value_or(Insight::cfg().enabledByDefault);
-                settings::setEnabled(sp.getUuid().asString(), !cur);
-                Insight::getInstance().getSelf().getLogger().info("{} toggled Insight {}", sp.getRealName(),
-                                                                  cur ? "off" : "on");
-                return !cur;
-            }
+    // /insight command: the shared command tree plus the per-player on/off/toggle
+    // switches.
+    //
+    // Registered directly, not from ServerCommandRegisterEvent. LeviLamina
+    // publishes that event from DedicatedServerCommands::setupStandaloneServer(),
+    // i.e. while the server instance is still being built, but mods are only
+    // enabled later (ServerScriptManager::onServerThreadStarted). A listener
+    // attached here would therefore never run on a dedicated server, which is
+    // why /insight used to be unknown even though the mod was enabled.
+    PlayerToggleFn toggle = [](Player& player) -> bool {
+        auto& sp  = *static_cast<ServerPlayer*>(&player);
+        bool  cur = settings::getEnabled(sp.getUuid().asString()).value_or(Insight::cfg().enabledByDefault);
+        settings::setEnabled(sp.getUuid().asString(), !cur);
+        Insight::getInstance().getSelf().getLogger().info(
+            "{} toggled Insight {}",
+            sp.getRealName(),
+            cur ? "off" : "on"
         );
-    }));
+        return !cur;
+    };
+    registerInsightCommand(false, toggle);
+    logger.debug("/insight command registered");
+
+    // Kept for the opposite registration order: should a future engine register
+    // commands after mods are enabled, the registry clear that accompanies the
+    // event would drop the registration above and this listener puts it back
+    // (LeviLamina's own listener clears first, so the command is never doubled).
+    mListeners.emplace_back(
+        bus.emplaceListener<ll::event::command::ServerCommandRegisterEvent>(
+            [toggle](auto&) { registerInsightCommand(false, toggle); }
+        )
+    );
 
     logger.info("Server mode enabled. channel={} interval={}t maxDistance={}", Insight::cfg().server.channel,
                 Insight::cfg().intervalTicks, Insight::cfg().maxDistance);

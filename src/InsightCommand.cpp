@@ -14,6 +14,7 @@
 #include "Config.h"
 #include "I18n.h"
 #include "Insight.h"
+#include "mc/server/commands/CommandPermissionLevel.h"
 
 namespace insight {
 
@@ -119,6 +120,7 @@ std::string statusText(std::string const& localeCode) {
     s += " | " + tr(localeCode, "channel") + " " + cfg.server.channel;
 #else
     s += " | " + tr(localeCode, "anchor") + " " + cfg.client.anchor;
+    s += " | " + tr(localeCode, "display") + " " + tr(localeCode, cfg.client.showOverlay ? "on" : "off");
     s += " | " + tr(localeCode, "lang") + " "
        + (cfg.client.language.empty() ? tr(localeCode, "auto") : cfg.client.language);
 #endif
@@ -143,8 +145,22 @@ void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn, OpenConf
     auto const enumName = std::string(ll::command::enum_name_v<InsightConfigOption>);
     bool const softEnum = registrar.hasSoftEnum(enumName) || registrar.tryRegisterSoftEnum(enumName, optionNames());
 
-    auto& cmd =
-        registrar.getOrCreateCommand("insight", "Insight - show what you are looking at", CommandPermissionLevel::Any);
+    // The two sides register differently named commands, the way LeviLamina's own
+    // /levilamina and /clilevilamina do. Joining a world merges the server's
+    // command list into the client registry and then lets client mods register on
+    // top of it, so an unprefixed client-side /insight would fight with a
+    // server-side /insight whenever both installs are present; the `cli` prefix
+    // keeps them apart and both stay usable. The tree below is identical.
+    auto const commandName = isClientSide ? "cliinsight" : "insight";
+
+    // The description is baked into the command registry when it is registered,
+    // so - unlike every message the command prints - it cannot follow the locale
+    // of whoever asks: it is translated once, into the language this install is
+    // configured for.
+    auto const description =
+        tr(resolveLanguageCode(Insight::cfg().client.language), "Insight's main command");
+
+    auto& cmd = registrar.getOrCreateCommand(commandName, description, CommandPermissionLevel::Any);
 
     if (toggleFn) {
         // --- per-player switches (server only) --------------------------
@@ -182,15 +198,16 @@ void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn, OpenConf
         output.success(statusText(origin.getLocaleCode()));
     });
 
-    // --- /insight gui: the client-side configuration screen ---------------
-    cmd.overload().text("gui").execute([openUi](CommandOrigin const& origin, CommandOutput& output) {
-        if (!openUi) {
-            output.error(tr(origin.getLocaleCode(), "The configuration screen is client-side only."));
-            return;
-        }
-        openUi();
-        output.success(tr(origin.getLocaleCode(), "Insight configuration screen opened."));
-    });
+    // --- gui: the configuration screen -------------------------------------
+    // Registered only where there is a screen to open. The server has none yet,
+    // so it does not advertise a subcommand that could only answer "not here";
+    // it will pass `openUi` once it has a screen of its own.
+    if (openUi) {
+        cmd.overload().text("gui").execute([openUi](CommandOrigin const& origin, CommandOutput& output) {
+            openUi();
+            output.success(tr(origin.getLocaleCode(), "Insight configuration screen opened."));
+        });
+    }
 
     cmd.overload().text("reload").execute([isClientSide](CommandOrigin const& origin, CommandOutput& output) {
         if (!isClientSide && !mayManage(origin)) {
