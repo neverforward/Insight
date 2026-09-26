@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      file (ffurrer2/extract-release-notes), so the version heading below has to
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
+## [Unreleased]
+### Added
+- The panel fades in when the info display appears and out when it disappears; when the crosshair
+  moves to another block or entity the same panel resizes its box from the size it had. The lines are
+  swapped at once and nothing is faded while that happens, so changing the subject never flashes.
+  `client.transitionTime` sets the duration in seconds (default 0.1); `0` keeps the previous behaviour
+  of appearing, resizing and disappearing instantly. Only the display switching and the box resizing
+  animate. The client overlay is the only side that can animate: a server-side channel hands text to
+  the vanilla UI.
+
+### Changed
+- Higher `Config` schema version (4) for the new option; existing files are merged automatically.
+
+### Fixed
+- `/insight set <option> <value>` rejected every number - `/insight set maxDistance 24` answered
+  `Syntax error: Unexpected "24"` - and anything containing a space: the value was declared as a
+  `std::string`, which looks like an identifier to the command parser. It is read as raw text now, so
+  numbers, colours and formats can be typed the way the README documents them. Values are still
+  validated (`Invalid number value: bogus`).
+
 ## [0.2.0] - 2026-09-25
 ### Added
 - Per-block extra info with **one switch per adapter** (`extras.*`), so every line can be silenced on
@@ -161,6 +181,7 @@ First release: the mod template has been turned into the actual mod.
 ### Removed
 - The mod template leftovers (`src/mod/MyMod.*`).
 
+[Unreleased]: https://github.com/neverforward/Insight/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/neverforward/Insight/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/neverforward/Insight/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/neverforward/Insight/compare/v0.0.2...v0.0.3

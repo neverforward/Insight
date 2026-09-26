@@ -65,6 +65,14 @@ struct ClientOptions {
     // Max overlay width as a fraction of screen width (text wraps). 0 = no wrap.
     float maxWidth = 0.0f;
 
+    // Fade the panel in and out when the info display is switched on or off, in
+    // seconds; the box also grows or shrinks over this time when the subject changes
+    // (the text itself is swapped at once - fading it flickered on every change). 0
+    // keeps the old behaviour of appearing, resizing and disappearing instantly.
+    // Client only: a server-side channel hands text to the vanilla UI, which
+    // cannot be animated.
+    float transitionTime = 0.1f;
+
     // Language of the interface and of the localized block names on the *client*:
     // "zh_cn", "en", or "auto". It is a stored preference rather than something
     // detected at runtime - this client answers "en_US" even on a Chinese
@@ -143,8 +151,9 @@ struct Config {
     // new field without a bump makes deserialization fail ("missing required
     // field") and the mod refuses to load. 1 -> 2: added the client key
     // bindings (keyOpenConfig / keyToggleShow). 2 -> 3: every extras adapter got
-    // its own switch (BlockExtrasConfig).
-    int version = 3;
+    // its own switch (BlockExtrasConfig). 3 -> 4: client.transitionTime (panel
+    // fade).
+    int version = 4;
 
     // Master switch for the whole mod.
     bool enabled = true;

@@ -9,11 +9,13 @@
 #include "ll/api/command/EnumName.h"
 #include "ll/api/command/SoftEnum.h"
 #include "mc/server/commands/CommandOrigin.h"
+#include "mc/server/commands/CommandRawText.h"
 #include "mc/server/commands/CommandOutput.h"
 
 #include "Config.h"
 #include "I18n.h"
 #include "Insight.h"
+#include "Util.h"
 #include "mc/server/commands/CommandPermissionLevel.h"
 
 namespace insight {
@@ -31,16 +33,22 @@ using InsightOptionParam = ll::command::SoftEnum<InsightConfigOption>;
 
 // Command parameter struct for `/insight set <option> <value>`. Must have
 // external linkage for the command system's reflection.
+//
+// The value is a CommandRawText, not a std::string: a std::string parameter parses
+// as Bedrock's `Id` non-terminal, which only accepts identifier-like tokens, so
+// every number ("0.5", "24") and anything containing a space was rejected with a
+// syntax error before the command even ran. RawText takes the rest of the line,
+// which is what a value typed by a player is.
 struct InsightSetParam {
     InsightOptionParam option;
-    std::string        value;
+    CommandRawText     value;
 };
 
 // Fallback parameter used only when this registry cannot hold soft enums; the
 // option stays a plain string then (no completion, same behaviour).
 struct InsightSetRawParam {
-    std::string option;
-    std::string value;
+    std::string    option;
+    CommandRawText value;
 };
 
 // The canonical option names, identical to the names accepted by
@@ -62,6 +70,7 @@ std::vector<std::string> const& optionNames() {
         "offsetY",
         "fontSize",
         "maxWidth",
+        "transitionTime",
         "background",
         "backgroundAlpha",
         "shadow",
@@ -223,8 +232,10 @@ void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn, OpenConf
                         CommandOrigin const& origin,
                         CommandOutput&       output,
                         std::string const&   option,
-                        std::string const&   value
+                        std::string          value
                     ) {
+        // raw text keeps whatever spacing the player typed around the value
+        util::trimInPlace(value);
         auto const localeCode = origin.getLocaleCode();
         if (!isClientSide && !mayManage(origin)) {
             output.error(tr(localeCode, "You do not have permission to change Insight."));
@@ -240,7 +251,7 @@ void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn, OpenConf
     if (softEnum) {
         cmd.overload<InsightSetParam>().text("set").required("option").required("value").execute(
             [applySet](CommandOrigin const& origin, CommandOutput& output, InsightSetParam const& param) {
-                applySet(origin, output, param.option, param.value);
+                applySet(origin, output, param.option, param.value.mText);
             }
         );
         // Registering the overload may have added the enum's own (empty) value
@@ -251,7 +262,7 @@ void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn, OpenConf
     } else {
         cmd.overload<InsightSetRawParam>().text("set").required("option").required("value").execute(
             [applySet](CommandOrigin const& origin, CommandOutput& output, InsightSetRawParam const& param) {
-                applySet(origin, output, param.option, param.value);
+                applySet(origin, output, param.option, param.value.mText);
             }
         );
     }

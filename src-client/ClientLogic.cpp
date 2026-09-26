@@ -557,6 +557,8 @@ void ClientLogic::pushOverlay() {
     content.backgroundAlpha = cfg.client.backgroundAlpha;
     content.shadow          = cfg.client.shadow;
     content.maxWidth        = cfg.client.maxWidth;
+    content.transitionTime  = cfg.client.transitionTime;
+    content.targetKey       = mTargetKey;
 
     if (wantVisible) {
         float textR = 1.0f, textG = 1.0f, textB = 1.0f;
@@ -782,7 +784,8 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
                 info.light    = describeBlockLight(region, eblock);
                 info.emission = describeBlockEmission(region, eblock);
             }
-            text                          = renderText(cfg, info);
+            text       = renderText(cfg, info);
+            mTargetKey = "e:" + eType + "#" + std::to_string(entity->getOrCreateUniqueID().rawID);
             std::string const entityState = info.entityType + "|" + info.entityName + "|" + std::to_string(info.health);
             if (entityState != lastEntityLog) {
                 lastEntityLog = entityState;
@@ -801,7 +804,9 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             info.direction = describeBlockFacing(region, hit->pos, lang);
             info.light     = describeBlockLight(region, hit->pos);
             info.emission  = describeBlockEmission(region, hit->pos);
-            text           = renderText(cfg, info);
+            text       = renderText(cfg, info);
+            mTargetKey = "b:" + hit->typeName + "@" + std::to_string(hit->pos.x) + "," + std::to_string(hit->pos.y)
+                       + "," + std::to_string(hit->pos.z);
             std::string neighborInfo;
             if (hit->typeName.find("piston") != std::string::npos) {
                 // log the six neighbours so the piston-arm block id is visible
@@ -840,7 +845,8 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             }
         } else if (cfg.showEmpty) {
             LookInfo info;
-            text = renderText(cfg, info);
+            text       = renderText(cfg, info);
+            mTargetKey = "empty";
         }
         mText    = text;
         mVisible = !text.empty();

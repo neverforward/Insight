@@ -64,7 +64,7 @@
 
 ```jsonc
 {
-    "version": 3,                  // 结构版本；升级模组时旧配置会自动合并，无需手动迁移
+    "version": 4,                  // 结构版本；升级模组时旧配置会自动合并，无需手动迁移
 
     "enabled": true,               // 总开关
     "enabledByDefault": true,      // 玩家默认开启；玩家可用 /insight 单独切换
@@ -126,6 +126,7 @@
         "shadow": true,            // 文字阴影
         "textColor": "ffffff",     // 无颜色代码时的文字颜色（RRGGBB）
         "maxWidth": 0.0,           // 最大面板宽度占屏比，0 = 不限（超长自动换行）
+        "transitionTime": 0.1,     // 面板开关的淡入淡出、以及换目标时面板尺寸过渡的秒数，0 = 立即
         "hideOverlayInGui": true,  // 打开背包/箱子等界面时隐藏面板
         "overlayOnRemote": "on",   // on=联机也画本地面板；off=联机时隐藏
         "language": "zh_cn",       // zh_cn、en，或 auto（客户端报告了已支持的语言时才跟随）

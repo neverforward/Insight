@@ -96,6 +96,22 @@ constexpr float gFontRaster = 24.0f; // atlas raster px
 // Frame payload (last value wins; read once per Present).
 std::mutex            gContentMutex;
 ImGuiOverlay::Content gContent;
+// Panel transition state (render thread only):
+//   gPanelFade    - 0..1 fade of the whole panel while it is switched on or off.
+//   gMorphT       - 0..1 progress of the box resize after the subject changed.
+//   gShownContent - the snapshot that is on screen. Kept because the game thread
+//                   stops filling the lines as soon as the display is switched
+//                   off, so a fade-out would otherwise have nothing to draw.
+float                 gPanelFade = 0.0f;
+float                 gMorphT    = 1.0f;
+ImGuiOverlay::Content gShownContent;
+std::string           gShownKey;
+// Geometry of the panel as it was drawn last: the size transition morphs towards the
+// new text's box from here instead of snapping it into place within one frame.
+float gBoxW  = 0.0f;
+float gBoxH  = 0.0f;
+float gFromW = 0.0f;
+float gFromH = 0.0f;
 // extra window (the configuration screen) drawn inside the same frame; the
 // setter runs on the game thread, the reader on the render thread
 std::mutex            gDrawerMutex;
@@ -541,9 +557,24 @@ void anchorOrigin(
     cy             = v * h + offsetY * sy * h;
 }
 
-void drawPanel(ImGuiOverlay::Content const& content) {
-    auto& io = ImGui::GetIO();
+// How the panel is drawn for one frame. There is only ever one panel: it fades in
+// and out with the display, and its box is resized when the subject changes - the
+// lines themselves are swapped at once, because fading them made every change of the
+// subject look like a flash.
+struct PanelDraw {
+    float fade       = 1.0f; // alpha of the whole panel (text and box together)
+    float morphFromW = 0.0f; // box size to resize from (0 = the natural size)
+    float morphFromH = 0.0f;
+    float morphT     = 1.0f; // resize progress
+};
+
+void drawPanel(ImGuiOverlay::Content const& content, PanelDraw const& opts) {
+    float const fade = std::clamp(opts.fade, 0.0f, 1.0f);
+    auto&       io   = ImGui::GetIO();
     if (io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f) {
+        return;
+    }
+    if (fade <= 0.0f) {
         return;
     }
     float w = io.DisplaySize.x;
@@ -630,6 +661,16 @@ void drawPanel(ImGuiOverlay::Content const& content) {
     float boxW = maxLineWidth + 2.0f * padX;
     float boxH = static_cast<float>(displayLines.size()) * lineStep + 2.0f * padY;
 
+    // Size transition: grow or shrink from the box that was on screen when the
+    // subject changed instead of snapping to the new text's size. `morphT` is the
+    // same progress that crossfades the text, so the two stay in step.
+    if (opts.morphT < 1.0f && opts.morphFromW > 0.0f && opts.morphFromH > 0.0f) {
+        boxW = opts.morphFromW + (boxW - opts.morphFromW) * opts.morphT;
+        boxH = opts.morphFromH + (boxH - opts.morphFromH) * opts.morphT;
+    }
+    gBoxW = boxW;
+    gBoxH = boxH;
+
     // Anchor point of the panel on screen plus the configured offsets.
     float u  = 0.5f;
     float v  = 0.5f;
@@ -671,7 +712,7 @@ void drawPanel(ImGuiOverlay::Content const& content) {
     auto* draw = ImGui::GetForegroundDrawList();
 
     if (content.background) {
-        float alpha = std::clamp(content.backgroundAlpha, 0.0f, 1.0f);
+        float alpha = std::clamp(content.backgroundAlpha, 0.0f, 1.0f) * fade;
         draw->AddRectFilled(ImVec2(boxLeft, boxTop), ImVec2(boxRight, boxBottom), toImU32(0.0f, 0.0f, 0.0f, alpha));
         draw->AddRect(
             ImVec2(boxLeft, boxTop),
@@ -698,8 +739,8 @@ void drawPanel(ImGuiOverlay::Content const& content) {
         float xCursor = xStart;
         for (size_t j = 0; j < displayLines[i].size(); ++j) {
             auto const& run  = displayLines[i][j];
-            auto        col  = toImU32(run.r, run.g, run.b);
-            auto        colS = toImU32(0.0f, 0.0f, 0.0f, content.background ? 0.85f : 0.5f);
+            auto        col  = toImU32(run.r, run.g, run.b, fade);
+            auto        colS = toImU32(0.0f, 0.0f, 0.0f, (content.background ? 0.85f : 0.5f) * fade);
             ImVec2      pos(xCursor, yCursor);
             if (content.shadow) {
                 draw->AddText(font, fontSizePx, ImVec2(pos.x + 1.0f, pos.y + 1.0f), colS, run.text.c_str());
@@ -747,9 +788,11 @@ void render(IDXGISwapChain* swapChain) {
             break;
         }
     }
-    // the frame only runs when there is something to draw: the HUD text or the
-    // configuration window (which has to keep drawing with the HUD hidden)
-    if ((!content.visible || !hasText) && !drawer) {
+    bool const wantVisible = content.visible && hasText;
+    // The frame runs when there is something to draw: the HUD text, a panel that
+    // is still fading out, or the configuration window (which keeps drawing with
+    // the HUD hidden).
+    if (!wantVisible && gPanelFade <= 0.0f && !drawer) {
         return;
     }
 
@@ -766,6 +809,42 @@ void render(IDXGISwapChain* swapChain) {
             ? (1.0f / 60.0f)
             : std::clamp(std::chrono::duration<float>(now - gLastFrameTime).count(), 1.0f / 240.0f, 1.0f / 10.0f);
     gLastFrameTime = now;
+
+    // Panel transition. The step comes from the frame time, so a duration means the
+    // same whatever the framerate is; 0 keeps the instantaneous behaviour (and is also
+    // the fallback while ImGui has no frame time yet).
+    float const duration = std::max(0.0f, content.transitionTime);
+    float const step     = duration > 0.0f ? io.DeltaTime / duration : 1.0f;
+    {
+        // Appearing out of nothing: the panel fades in with whatever is under the
+        // crosshair now and has no size to grow from.
+        bool const appearing = wantVisible && gPanelFade <= 0.0f;
+        if (appearing) {
+            gShownContent = content;
+            gShownKey     = content.targetKey;
+            gFromW        = 0.0f;
+            gFromH        = 0.0f;
+            gMorphT       = 1.0f;
+        } else if (wantVisible) {
+            if (content.targetKey != gShownKey) {
+                // Another block or entity. The text is swapped at once - fading it
+                // made every change of the subject look like a flash - and only the
+                // box is resized, from the size it had to the size the new lines need.
+                gShownContent = content;
+                gShownKey     = content.targetKey;
+                gFromW        = gBoxW;
+                gFromH        = gBoxH;
+                gMorphT       = 0.0f;
+            } else {
+                // same subject, new text (a ticking timer, health, ...): follow it too
+                gShownContent = content;
+            }
+        }
+        gMorphT = std::min(1.0f, gMorphT + step);
+        float const target = wantVisible ? 1.0f : 0.0f;
+        gPanelFade = target > gPanelFade ? std::min(target, gPanelFade + step)
+                                         : std::max(target, gPanelFade - step);
+    }
 
     // Re-asserted every frame while the screen is open: a Minecraft screen
     // transition, an alt-tab or another overlay can hide the pointer behind our
@@ -795,8 +874,17 @@ void render(IDXGISwapChain* swapChain) {
         ImGui::NewFrame();
         // The configuration screen is modal and shows the panel as its own
         // preview, so the real one is not drawn underneath it as well.
-        if (content.visible && hasText && !menuOpen) {
-            drawPanel(content);
+        if (!menuOpen && (wantVisible || gPanelFade > 0.0f)) {
+            // One panel, and only the transition the user asked for: it fades in and
+            // out with the display, and when the subject changes its box is resized
+            // from the size it had. Text and box keep the panel's own alpha, so a
+            // change of the subject never flashes.
+            PanelDraw panel;
+            panel.fade       = gPanelFade;
+            panel.morphFromW = gFromW;
+            panel.morphFromH = gFromH;
+            panel.morphT     = wantVisible ? gMorphT : 1.0f;
+            drawPanel(gShownContent, panel);
         }
         if (drawer) {
             drawer(); // configuration screen, drawn on top of the HUD

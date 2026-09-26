@@ -69,7 +69,7 @@ The client can also edit the configuration in a screen instead of the chat:
 
 ```jsonc
 {
-    "version": 3,                  // schema version; older files are merged automatically
+    "version": 4,                  // schema version; older files are merged automatically
 
     "enabled": true,               // master switch
     "enabledByDefault": true,      // default for players; they can toggle it with /insight
@@ -131,6 +131,7 @@ The client can also edit the configuration in a screen instead of the chat:
         "shadow": true,            // text shadow
         "textColor": "ffffff",     // text colour (RRGGBB) when no colour code is used
         "maxWidth": 0.0,           // max panel width as a fraction of the screen, 0 = unlimited (long lines wrap)
+        "transitionTime": 0.1,     // seconds to fade the panel in/out (display toggled) and to resize it (target changed), 0 = instant
         "hideOverlayInGui": true,  // hide the panel while an inventory / container screen is open
         "overlayOnRemote": "on",   // on = always draw the local panel; off = hide it online (the server pushes it)
         "language": "zh_cn",       // zh_cn, en, or auto (follow the client when it reports a shipped language)

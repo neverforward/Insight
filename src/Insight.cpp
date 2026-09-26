@@ -289,6 +289,9 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
     if (lower == "maxwidth") {
         return setNumber(gConfig.client.maxWidth, "maxWidth", 0, 1);
     }
+    if (lower == "transitiontime") {
+        return setNumber(gConfig.client.transitionTime, "transitionTime", 0, 1);
+    }
     if (lower == "background") {
         return setBool(gConfig.client.background, "background");
     }

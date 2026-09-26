@@ -37,6 +37,15 @@ public:
         // Max panel width as a fraction of the screen width (0 = no limit).
         // Longer lines are wrapped at character boundaries.
         float maxWidth = 0.0f;
+        // Seconds to fade the panel in when `visible` turns on and out when it
+        // turns off; 0 draws it instantly. The overlay owns the animation, so the
+        // game thread only has to say whether the display is on.
+        float transitionTime = 0.15f;
+        // Identity of the subject these lines describe (block or entity). The
+        // overlay crossfades when it changes, which is what makes looking from one
+        // block to the next a transition instead of a hard swap - while the same
+        // subject may keep updating its text (a timer, health) without animating.
+        std::string targetKey;
     };
 
     ImGuiOverlay() = default;

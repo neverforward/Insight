@@ -39,6 +39,9 @@ private:
 
     std::chrono::steady_clock::time_point mLastSample{};
     std::string                           mText;
+    // Changes only when the crosshair moves to another subject; the overlay uses it
+    // to crossfade, while a refresh of the same subject's text must not animate.
+    std::string                           mTargetKey;
     bool                                  mVisible = false;
 
     // Refresh triggers: while a GUI is open the panel is hidden and no

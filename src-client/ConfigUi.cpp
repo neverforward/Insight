@@ -351,6 +351,9 @@ std::string currentValueText(Row const& row, std::string const& locale) {
     if (row.option == "maxWidth") {
         return util::trimNumber(cfg.client.maxWidth, 2);
     }
+    if (row.option == "transitionTime") {
+        return util::trimNumber(cfg.client.transitionTime, 2);
+    }
     if (row.option == "backgroundAlpha") {
         return util::trimNumber(cfg.client.backgroundAlpha, 2);
     }
@@ -959,6 +962,7 @@ void ConfigUi::draw() {
             {"Panel opacity", "backgroundAlpha", Kind::Float, 0.0f, 1.0f, false, {}},
             {"Text shadow",   "shadow",          Kind::Bool,  0.0f, 0.0f, false, {}},
             {"Max width",     "maxWidth",        Kind::Float, 0.0f, 1.0f, false, {}},
+            {"Fade time",     "transitionTime",  Kind::Float, 0.0f, 1.0f, false, {}},
             {"Offset X",      "offsetX",         Kind::Float, 0.0f, 1.0f, false, {}},
             {"Offset Y",      "offsetY",         Kind::Float, 0.0f, 1.0f, false, {}},
             {"Anchor",
