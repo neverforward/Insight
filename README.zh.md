@@ -1,9 +1,9 @@
 ![Insight](https://socialify.git.ci/neverforward/Insight/image?custom_description=A+lightweight+info+display+mod+for+Bedrock+Edition+that+shows+you+exactly+what+you+are+looking+at.&description=1&font=Inter&forks=1&issues=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fneverforward%2FInsight%2Frefs%2Fheads%2Fmain%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Plus&pulls=1&stargazers=1&theme=Auto)
 
-[![](https://img.shields.io/badge/English-informational?style=for-the-badge)
-](README.md)![](https://img.shields.io/badge/简体中文-inactive?style=for-the-badge)
+[![](https://img.shields.io/badge/English-informational?style=for-the-badge)](README.md)
+![](https://img.shields.io/badge/简体中文-inactive?style=for-the-badge)
 ![GitHub License](https://img.shields.io/github/license/neverforward/Insight?style=for-the-badge)
- ![GitHub Tag](https://img.shields.io/github/v/tag/neverforward/Insight?style=for-the-badge)
+![GitHub Tag](https://img.shields.io/github/v/tag/neverforward/Insight?style=for-the-badge)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/neverforward/Insight/build.yml?style=for-the-badge)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/y/neverforward/Insight?style=for-the-badge)
 
@@ -136,7 +136,7 @@
 }
 ```
 
-> 如果需要详细日志（方块的每个状态、容器槽位判定、活塞/陶罐诊断等）要将 `PreLoaderConfig.json` 中的 `logLevel` 改为 `4`
+> 如果需要详细日志（方块的每个状态、容器槽位判定、活塞/陶罐诊断等）要将 `PreLoaderConfig.json` 中的 `logLevel` 改为 `5`
 
 ### format 占位符
 

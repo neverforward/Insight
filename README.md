@@ -1,7 +1,8 @@
 ![Insight](https://socialify.git.ci/neverforward/Insight/image?custom_description=A+lightweight+info+display+mod+for+Bedrock+Edition+that+shows+you+exactly+what+you+are+looking+at.&description=1&font=Inter&forks=1&issues=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fneverforward%2FInsight%2Frefs%2Fheads%2Fmain%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Plus&pulls=1&stargazers=1&theme=Auto)
 
-[![Static Badge](https://img.shields.io/badge/English-inactive?style=for-the-badge)
-](README.md) ![Static Badge](https://img.shields.io/badge/简体中文-informational?style=for-the-badge) ![GitHub License](https://img.shields.io/github/license/neverforward/Insight?style=for-the-badge)
+![Static Badge](https://img.shields.io/badge/English-inactive?style=for-the-badge)
+[![Static Badge](https://img.shields.io/badge/简体中文-informational?style=for-the-badge)](README.zh.md)
+![GitHub License](https://img.shields.io/github/license/neverforward/Insight?style=for-the-badge)
 ![GitHub Tag](https://img.shields.io/github/v/tag/neverforward/Insight?style=for-the-badge)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/neverforward/Insight/build.yml?style=for-the-badge)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/y/neverforward/Insight?style=for-the-badge)
@@ -142,7 +143,7 @@ The client can also edit the configuration in a screen instead of the chat:
 ```
 
 > For detailed logs (every block state, container slot decisions, piston / decorated pot
-> diagnostics, ...) set `logLevel` to `4` in `PreLoaderConfig.json`.
+> diagnostics, ...) set `logLevel` to `5` in `PreLoaderConfig.json`.
 
 ### format placeholders
 
