@@ -46,7 +46,38 @@ public:
         // block to the next a transition instead of a hard swap - while the same
         // subject may keep updating its text (a timer, health) without animating.
         std::string targetKey;
+        // True when this subject has an icon. The game thread draws it with the engine's
+        // own item renderer (see ClientLogic::onAfterRender); this side only reserves the
+        // space for it and leaves the slot empty, because the icon lives in the UI layer
+        // that is painted before ImGui ever gets a frame.
+        bool icon = false;
     };
+
+    /// Where the panel reserved space for the icon, in pixels, plus the pixel size of the
+    /// frame. The game thread needs all of it: it has to place the icon in UI units (the
+    /// engine's own space) and it cannot see ImGui's layout.
+    struct IconSlot {
+        bool  valid    = false;
+        float x        = 0.0f;
+        float y        = 0.0f;
+        float size     = 0.0f;
+        float displayW = 0.0f;
+        float displayH = 0.0f;
+    };
+    [[nodiscard]] IconSlot iconSlot() const;
+
+    /// The rectangle the game thread actually drew the icon into, back in pixels. The
+    /// panel cuts its background hole exactly here, so a moving panel cannot leave the
+    /// icon behind: only the game thread knows the UI scale, so it does the conversion
+    /// and this side just uses the result.
+    struct IconHole {
+        bool  valid = false;
+        float x     = 0.0f;
+        float y     = 0.0f;
+        float size  = 0.0f;
+    };
+    void                   setIconHole(IconHole hole);
+    [[nodiscard]] IconHole iconHole() const;
 
     ImGuiOverlay() = default;
     ~ImGuiOverlay();

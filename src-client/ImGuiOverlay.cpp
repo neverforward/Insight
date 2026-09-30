@@ -568,6 +568,21 @@ struct PanelDraw {
     float morphT     = 1.0f; // resize progress
 };
 
+// The panel's icon slot, published for the game thread (pixels, as ImGui sees them) and
+// the rectangle the game thread reported back after drawing the icon in UI units. The hole
+// in the panel background is cut at that reported rectangle, so icon and hole cannot drift.
+std::atomic<bool>  gIconSlotValid{false};
+std::atomic<float> gIconSlotX{0.0f};
+std::atomic<float> gIconSlotY{0.0f};
+std::atomic<float> gIconSlotSize{0.0f};
+std::atomic<float> gIconSlotDisplayW{0.0f};
+std::atomic<float> gIconSlotDisplayH{0.0f};
+std::atomic<bool>  gIconHoleValid{false};
+std::atomic<float> gIconHoleX{0.0f};
+std::atomic<float> gIconHoleY{0.0f};
+std::atomic<float> gIconHoleSize{0.0f};
+
+
 void drawPanel(ImGuiOverlay::Content const& content, PanelDraw const& opts) {
     float const fade = std::clamp(opts.fade, 0.0f, 1.0f);
     auto&       io   = ImGui::GetIO();
@@ -658,8 +673,14 @@ void drawPanel(ImGuiOverlay::Content const& content, PanelDraw const& opts) {
         maxLineWidth = std::max(maxLineWidth, totalWidths[i]);
     }
 
-    float boxW = maxLineWidth + 2.0f * padX;
+    // A subject with an icon gets a square cell at the left of the panel; the text moves
+    // over by its width, and the panel grows by it.
+    float const iconSize = content.icon ? std::ceil(fontSizePx * 1.6f) : 0.0f;
+    float const iconCol  = iconSize > 0.0f ? iconSize + padX : 0.0f;
+
+    float boxW = maxLineWidth + 2.0f * padX + iconCol;
     float boxH = static_cast<float>(displayLines.size()) * lineStep + 2.0f * padY;
+    boxH       = std::max(boxH, iconSize + 2.0f * padY);
 
     // Size transition: grow or shrink from the box that was on screen when the
     // subject changed instead of snapping to the new text's size. `morphT` is the
@@ -711,9 +732,32 @@ void drawPanel(ImGuiOverlay::Content const& content, PanelDraw const& opts) {
 
     auto* draw = ImGui::GetForegroundDrawList();
 
+    // Publish the icon slot for the game thread, then cut the background around whatever
+    // rectangle it reports back: the icon is already in the UI layer by the time ImGui runs.
+    gIconSlotX.store(boxLeft + padX, std::memory_order_relaxed);
+    gIconSlotY.store(boxTop + (boxH - iconSize) / 2.0f, std::memory_order_relaxed);
+    gIconSlotSize.store(iconSize, std::memory_order_relaxed);
+    gIconSlotDisplayW.store(w, std::memory_order_relaxed);
+    gIconSlotDisplayH.store(h, std::memory_order_relaxed);
+    gIconSlotValid.store(iconSize > 0.0f, std::memory_order_release);
+
     if (content.background) {
-        float alpha = std::clamp(content.backgroundAlpha, 0.0f, 1.0f) * fade;
-        draw->AddRectFilled(ImVec2(boxLeft, boxTop), ImVec2(boxRight, boxBottom), toImU32(0.0f, 0.0f, 0.0f, alpha));
+        float const alpha = std::clamp(content.backgroundAlpha, 0.0f, 1.0f) * fade;
+        ImU32 const fill  = toImU32(0.0f, 0.0f, 0.0f, alpha);
+        // The rectangle the game thread reported back for the icon it drew, if any.
+        bool const  holeValid = iconSize > 0.0f && gIconHoleValid.load(std::memory_order_acquire);
+        float const holeX     = gIconHoleX.load(std::memory_order_relaxed);
+        float const holeY     = gIconHoleY.load(std::memory_order_relaxed);
+        float const holeSize  = gIconHoleSize.load(std::memory_order_relaxed);
+        if (holeValid && holeSize > 1.0f) {
+            // Four rectangles instead of one, leaving the engine-drawn icon visible.
+            draw->AddRectFilled(ImVec2(boxLeft, boxTop), ImVec2(boxRight, holeY), fill);
+            draw->AddRectFilled(ImVec2(boxLeft, holeY + holeSize), ImVec2(boxRight, boxBottom), fill);
+            draw->AddRectFilled(ImVec2(boxLeft, holeY), ImVec2(holeX, holeY + holeSize), fill);
+            draw->AddRectFilled(ImVec2(holeX + holeSize, holeY), ImVec2(boxRight, holeY + holeSize), fill);
+        } else {
+            draw->AddRectFilled(ImVec2(boxLeft, boxTop), ImVec2(boxRight, boxBottom), fill);
+        }
         draw->AddRect(
             ImVec2(boxLeft, boxTop),
             ImVec2(boxRight, boxBottom),
@@ -730,11 +774,14 @@ void drawPanel(ImGuiOverlay::Content const& content, PanelDraw const& opts) {
 
     float yCursor = boxTop + padY;
     for (size_t i = 0; i < displayLines.size(); ++i) {
-        float xStart = boxLeft + padX;
+        // The icon column, when there is one, sits to the left of the text area.
+        float const areaL  = boxLeft + padX + iconCol;
+        float const areaR  = boxRight - padX;
+        float       xStart = areaL;
         if (!left && !right) {
-            xStart = (boxLeft + boxRight) / 2.0f - totalWidths[i] / 2.0f;
+            xStart = (areaL + areaR) / 2.0f - totalWidths[i] / 2.0f;
         } else if (right) {
-            xStart = boxRight - padX - totalWidths[i];
+            xStart = areaR - totalWidths[i];
         }
         float xCursor = xStart;
         for (size_t j = 0; j < displayLines[i].size(); ++j) {
@@ -1314,6 +1361,33 @@ void ImGuiOverlay::shutdown() {
     gPanelFont       = nullptr;
     gInstalled.store(false, std::memory_order_release);
     gShuttingDown.store(false, std::memory_order_release);
+}
+
+ImGuiOverlay::IconSlot ImGuiOverlay::iconSlot() const {
+    IconSlot slot;
+    slot.valid    = gIconSlotValid.load(std::memory_order_acquire);
+    slot.x        = gIconSlotX.load(std::memory_order_relaxed);
+    slot.y        = gIconSlotY.load(std::memory_order_relaxed);
+    slot.size     = gIconSlotSize.load(std::memory_order_relaxed);
+    slot.displayW = gIconSlotDisplayW.load(std::memory_order_relaxed);
+    slot.displayH = gIconSlotDisplayH.load(std::memory_order_relaxed);
+    return slot;
+}
+
+void ImGuiOverlay::setIconHole(ImGuiOverlay::IconHole hole) {
+    gIconHoleX.store(hole.x, std::memory_order_relaxed);
+    gIconHoleY.store(hole.y, std::memory_order_relaxed);
+    gIconHoleSize.store(hole.size, std::memory_order_relaxed);
+    gIconHoleValid.store(hole.valid, std::memory_order_release);
+}
+
+ImGuiOverlay::IconHole ImGuiOverlay::iconHole() const {
+    IconHole hole;
+    hole.valid = gIconHoleValid.load(std::memory_order_acquire);
+    hole.x     = gIconHoleX.load(std::memory_order_relaxed);
+    hole.y     = gIconHoleY.load(std::memory_order_relaxed);
+    hole.size  = gIconHoleSize.load(std::memory_order_relaxed);
+    return hole;
 }
 
 } // namespace insight

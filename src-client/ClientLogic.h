@@ -8,6 +8,7 @@
 #include "ll/api/event/render/UIRenderEvent.h"
 
 #include "mc/world/level/BlockPos.h"
+#include "mc/world/item/ItemStack.h"
 
 #include "ImGuiOverlay.h"
 #include "PlatformLogic.h"
@@ -29,6 +30,11 @@ public:
 private:
     void onRender(ll::event::render::BeforeUIRenderEvent& event);
 
+    /// Draws the current subject's icon with the game's own item renderer, into the slot the
+    /// overlay published, and reports the rectangle it used back. Runs after the screen's UI
+    /// so the icon lands on top of it; the overlay leaves that slot empty for exactly this.
+    void onAfterRender(ll::event::render::AfterUIRenderEvent& event);
+
     /// Convert the current mText/mVisible + client config into an overlay
     /// content payload and hand it to the ImGui overlay (render thread).
     void pushOverlay();
@@ -36,6 +42,11 @@ private:
     std::vector<ll::event::ListenerPtr> mListeners;
 
     ImGuiOverlay mOverlay;
+
+    // The current subject as an item stack: the only form the game's item renderer accepts,
+    // and what onAfterRender hands it. Null for subjects it cannot draw (entities), which
+    // simply get no icon.
+    ItemStack mIconStack;
 
     std::chrono::steady_clock::time_point mLastSample{};
     std::string                           mText;

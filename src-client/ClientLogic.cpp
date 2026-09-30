@@ -17,6 +17,8 @@
 #include "mc/client/gui/TextMeasureData.h"
 #include "mc/client/player/LocalPlayer.h"
 #include "mc/client/renderer/screen/MinecraftUIRenderContext.h"
+#include "mc/client/renderer/BaseActorRenderContext.h"
+#include "mc/client/renderer/actor/ItemRenderer.h"
 #include "mc/deps/core/math/Color.h"
 #include "mc/deps/core/math/Vec3.h"
 #include "mc/deps/input/RectangleArea.h"
@@ -34,6 +36,7 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/dimension/Dimension.h"
+#include "mc/world/item/Item.h"
 
 #include "Config.h"
 #include "ConfigUi.h"
@@ -460,6 +463,11 @@ bool ClientLogic::enable() {
         // report what the config actually says, not what we asked for
         return Insight::cfg().client.showOverlay;
     };
+    // The subject's icon is drawn by the game's own item renderer, after the screen's UI so
+    // it lands on top of it (see onAfterRender).
+    mListeners.emplace_back(bus.emplaceListener<ll::event::render::AfterUIRenderEvent>(
+        [this](ll::event::render::AfterUIRenderEvent& event) { onAfterRender(event); }
+    ));
     mListeners.emplace_back(bus.emplaceListener<ll::event::command::ClientCommandRegisterEvent>(
         [toggle](auto&) {
             registerInsightCommand(true, toggle, [] { ConfigUi::instance().setVisible(true); });
@@ -559,6 +567,9 @@ void ClientLogic::pushOverlay() {
     content.maxWidth        = cfg.client.maxWidth;
     content.transitionTime  = cfg.client.transitionTime;
     content.targetKey       = mTargetKey;
+    // An icon slot only when there is something the item renderer can draw: an empty or
+    // entity subject leaves the panel as it was.
+    content.icon            = !mIconStack.isNull();
 
     if (wantVisible) {
         float textR = 1.0f, textG = 1.0f, textB = 1.0f;
@@ -786,6 +797,7 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             }
             text       = renderText(cfg, info);
             mTargetKey = "e:" + eType + "#" + std::to_string(entity->getOrCreateUniqueID().rawID);
+            mIconStack = ItemStack{}; // entities have no block icon
             std::string const entityState = info.entityType + "|" + info.entityName + "|" + std::to_string(info.health);
             if (entityState != lastEntityLog) {
                 lastEntityLog = entityState;
@@ -807,6 +819,13 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             text       = renderText(cfg, info);
             mTargetKey = "b:" + hit->typeName + "@" + std::to_string(hit->pos.x) + "," + std::to_string(hit->pos.y)
                        + "," + std::to_string(hit->pos.z);
+            // The same subject as an item stack, which is what the item renderer draws from.
+            mIconStack = ItemStack{};
+            try {
+                mIconStack.reinit(region.getBlock(hit->pos), 1);
+            } catch (...) {
+                mIconStack = ItemStack{};
+            }
             std::string neighborInfo;
             if (hit->typeName.find("piston") != std::string::npos) {
                 // log the six neighbours so the piston-arm block id is visible
@@ -853,6 +872,67 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
     }
 
     pushOverlay();
+}
+
+void ClientLogic::onAfterRender(ll::event::render::AfterUIRenderEvent& event) {
+    auto const& cfg = Insight::cfg();
+    // Whatever happens below, the panel must not keep a stale hole from the previous frame.
+    mOverlay.setIconHole({});
+    if (!cfg.enabled || !cfg.client.showOverlay || !mVisible) {
+        return;
+    }
+    // Only the hud_screen pass owns the panel, like in onRender.
+    std::string screen;
+    try {
+        screen = event.screenView().getScreenName();
+    } catch (...) {
+        return;
+    }
+    bool const hudLike = screen.empty() || screen == "hud_screen" || screen.find("hud") != std::string::npos;
+    if (!hudLike) {
+        return;
+    }
+    // The panel published the slot it reserved; without one there is nothing to fill.
+    auto const slot = mOverlay.iconSlot();
+    if (!slot.valid || slot.size <= 1.0f || slot.displayW <= 0.0f) {
+        return;
+    }
+    if (mIconStack.isNull() || !mIconStack.mItem) {
+        return;
+    }
+    auto&         context      = event.uiRenderContext();
+    auto&         client       = context.mClient;
+    ItemRenderer* itemRenderer = client.getItemRenderer();
+    if (!itemRenderer) {
+        return;
+    }
+    try {
+        // The panel lays itself out in pixels while the engine draws in its own (scaled) UI
+        // units, so the published slot is converted through the screen view's size and the
+        // rectangle actually used is converted back for the panel's hole.
+        glm::vec2 const uiSize  = event.screenView().mSize;
+        float const     uiPerPx = uiSize.x > 0.0f ? uiSize.x / slot.displayW : 1.0f;
+        float const     pxPerUi = 1.0f / uiPerPx;
+
+        BaseActorRenderContext renderContext(context.mScreenContext, client, client.getMinecraftGame_DEPRECATED());
+        auto* const            holder = client.getLocalPlayer();
+        int const              frame  = mIconStack.mItem->getAnimationFrameFor(holder, false, &mIconStack, true);
+        // A vanilla item icon is 16 UI units at scale 1, so the panel's slot sets the scale.
+        // The rest mirrors a vanilla slot: no foil pass, full opacity, drawn above the UI.
+        float const scale = std::max(0.25f, slot.size * uiPerPx / 16.0f);
+        float const uiX   = slot.x * uiPerPx;
+        float const uiY   = slot.y * uiPerPx;
+        itemRenderer->renderGuiItemNew(renderContext, mIconStack, frame, uiX, uiY, false, 1.0f, 1.0f, scale, 17);
+
+        ImGuiOverlay::IconHole hole;
+        hole.valid = true;
+        hole.x     = uiX * pxPerUi;
+        hole.y     = uiY * pxPerUi;
+        hole.size  = slot.size;
+        mOverlay.setIconHole(hole);
+    } catch (...) {
+        Insight::getInstance().getSelf().getLogger().debug("[icon] engine icon draw threw");
+    }
 }
 
 } // namespace insight
