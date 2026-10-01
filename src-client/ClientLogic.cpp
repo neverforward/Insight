@@ -927,22 +927,6 @@ void ClientLogic::onAfterRender(ll::event::render::AfterUIRenderEvent& event) {
     }
 }
 
-/// Drops legacy section-sign colour codes ("§a"), which the engine's text renderer would
-/// otherwise draw as glyphs.
-std::string stripSectionCodes(std::string const& in) {
-    std::string out;
-    out.reserve(in.size());
-    for (size_t i = 0; i < in.size(); ++i) {
-        auto const byte = static_cast<unsigned char>(in[i]);
-        if (byte == 0xC2 && i + 1 < in.size() && static_cast<unsigned char>(in[i + 1]) == 0xA7) {
-            i += 2; // the sign, its colour character, and the loop's ++i
-            continue;
-        }
-        out.push_back(in[i]);
-    }
-    return out;
-}
-
 void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) {
     auto const& cfg     = Insight::cfg();
     auto&       context = event.uiRenderContext();
@@ -999,8 +983,11 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
     std::vector<float>       widths;
     float                    widest   = 0.0f;
     float                    lineStep = 0.0f;
+    // The lines are handed to the engine's text renderer as they are, section-sign colour codes
+    // included: feeding them through unmodified is how we find out whether the engine resolves
+    // them itself. The old path stripped them here because it drew them as glyphs.
     for (auto& raw : util::splitLines(mShownText)) {
-        lines.push_back(stripSectionCodes(raw));
+        lines.push_back(raw);
         auto const measured = measure.measureText(fontRef, lines.back(), 4096.0f, 4096.0f, textData, caretData);
         widths.push_back(measured.mSize->x);
         widest   = std::max(widest, measured.mSize->x);
