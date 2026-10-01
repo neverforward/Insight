@@ -1126,12 +1126,15 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
         // the model's pose, so passing a per-frame value made every 3D icon jitter while 2D
         // item icons stayed still.
         int const frame = 0;
+        // The icon sits at the top of the cell, level with the first text line, rather than
+        // centred on the whole panel: a tall panel (many extra lines) left it floating in the
+        // middle, away from the name it belongs to.
         itemRenderer->renderGuiItemNew(
             renderContext,
             mIconStack,
             frame,
             boxL + padX,
-            boxT + ((boxB - boxT) - iconSize) / 2.0f,
+            boxT + padY,
             false,
             mNativeFade, // the panel's fade: the icon used to pop in at full opacity
             1.0f,
