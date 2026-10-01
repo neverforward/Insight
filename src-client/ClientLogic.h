@@ -35,6 +35,12 @@ private:
     /// so the icon lands on top of it; the overlay leaves that slot empty for exactly this.
     void onAfterRender(ll::event::render::AfterUIRenderEvent& event);
 
+    /// Draws the whole panel through Minecraft's own UI context: rectangles for the box, the
+    /// game's item renderer for the icon and the engine font for the text. Everything shares
+    /// the UI's coordinate system, so the icon sits in its cell by construction - the ImGui
+    /// overlay draws in pixels on the Present hook, a space the UI pass never sees.
+    void drawPanelNative(ll::event::render::AfterUIRenderEvent& event);
+
     /// Convert the current mText/mVisible + client config into an overlay
     /// content payload and hand it to the ImGui overlay (render thread).
     void pushOverlay();
@@ -47,6 +53,30 @@ private:
     // and what onAfterRender hands it. Null for subjects it cannot draw (entities), which
     // simply get no icon.
     ItemStack mIconStack;
+    // Subject the stack above was built for. The stack must be reused for as long as the
+    // subject lives: a freshly built one makes the engine restart the model/pickup animation,
+    // which shows up as a 3D block icon that keeps popping.
+    std::string mIconKey;
+
+    // The content the panel actually draws. It lags mText by one step: the sampler clears
+    // mText the moment the subject is lost, and drawing nothing there would blink the panel
+    // away instead of fading it out.
+    std::string mShownText;
+    // Fade of the native panel, driven by client.transitionTime, so the display still fades
+    // in and out the way the ImGui one did.
+    float mNativeFade = 0.0f;
+    // Timestamp of the last fade step. The UI render event fires once per screen in the stack,
+    // so the fade has to advance by elapsed time instead of once per call.
+    std::chrono::steady_clock::time_point mLastPanelTick{};
+    // Panel size. mBoxWantW/mBoxWantH is what the current subject asks for: frozen per subject,
+    // quantised and grow-only, so a ticking digit cannot jitter the box. mBoxW/mBoxH is what is
+    // actually drawn - it eases towards the target, and that easing is the panel's own
+    // size-change animation (on a target switch and on content growth alike).
+    std::string mBoxKey;
+    float       mBoxWantW = 0.0f;
+    float       mBoxWantH = 0.0f;
+    float       mBoxW     = 0.0f;
+    float       mBoxH     = 0.0f;
 
     std::chrono::steady_clock::time_point mLastSample{};
     std::string                           mText;

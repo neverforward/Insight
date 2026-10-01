@@ -17,7 +17,13 @@
 #include "mc/client/gui/TextMeasureData.h"
 #include "mc/client/player/LocalPlayer.h"
 #include "mc/client/renderer/screen/MinecraftUIRenderContext.h"
+#include "mc/client/gui/FontRepository.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
+// Needed by drawPanelNative: the game object behind getMinecraftGame_DEPRECATED() and the
+// result type of the UI's text measurement. Added after the line above rather than before it,
+// so that header keeps the include order it needs.
+#include "mc/client/game/IMinecraftGame.h"
+#include "mc/client/gui/controls/MeasureResult.h"
 #include "mc/client/renderer/actor/ItemRenderer.h"
 #include "mc/deps/core/math/Color.h"
 #include "mc/deps/core/math/Vec3.h"
@@ -556,7 +562,9 @@ void ClientLogic::pushOverlay() {
     bool        wantVisible = mVisible && !mText.empty();
 
     ImGuiOverlay::Content content;
-    content.visible         = wantVisible;
+    // The HUD is drawn natively (ClientLogic::drawPanelNative); the ImGui overlay is kept for
+    // the configuration screen only, so its HUD content is never shown.
+    content.visible         = false;
     content.anchor          = cfg.client.anchor;
     content.offsetX         = cfg.client.offsetX;
     content.offsetY         = cfg.client.offsetY;
@@ -820,11 +828,29 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             mTargetKey = "b:" + hit->typeName + "@" + std::to_string(hit->pos.x) + "," + std::to_string(hit->pos.y)
                        + "," + std::to_string(hit->pos.z);
             // The same subject as an item stack, which is what the item renderer draws from.
-            mIconStack = ItemStack{};
-            try {
-                mIconStack.reinit(region.getBlock(hit->pos), 1);
-            } catch (...) {
+            // The subject in its *item* form, which is what the game's item renderer draws.
+            // Lamium resolves a block target the same way (Block::asItemInstance -> full name
+            // + aux -> ItemStack::reinit) and keeps that stack for as long as the target lives.
+            // Rebuilding it every sample would restart the model's pickup animation, which is
+            // what made 3D block icons pop while 2D item sprites looked fine. Blocks without an
+            // item (portal, fire, ...) simply get no icon.
+            if (mIconKey != mTargetKey) {
+                mIconKey   = mTargetKey;
                 mIconStack = ItemStack{};
+                try {
+                    auto item = region.getBlock(hit->pos).asItemInstance(region, hit->pos, true);
+                    if (!item.isNull() && item.mItem) {
+                        mIconStack.reinit(item.mItem->mFullName->getString(), 1, item.getAuxValue());
+                        // A freshly reinited stack counts as "just picked up", so the item
+                        // renderer replays its pickup squash on it - one visible pop on every
+                        // target switch, on 3D block models only (2D sprites are pose
+                        // independent). Lamium clears the same two flags (InfoHud.cpp:137-138).
+                        mIconStack.mShowPickUp  = false;
+                        mIconStack.mWasPickedUp = false;
+                    }
+                } catch (...) {
+                    mIconStack = ItemStack{};
+                }
             }
             std::string neighborInfo;
             if (hit->typeName.find("piston") != std::string::npos) {
@@ -892,47 +918,264 @@ void ClientLogic::onAfterRender(ll::event::render::AfterUIRenderEvent& event) {
     if (!hudLike) {
         return;
     }
-    // The panel published the slot it reserved; without one there is nothing to fill.
-    auto const slot = mOverlay.iconSlot();
-    if (!slot.valid || slot.size <= 1.0f || slot.displayW <= 0.0f) {
-        return;
+    // Draw on the HUD pass only. This event fires once per screen in the stack, so a looser
+    // filter paints the panel (and the icon) several times a frame; the 3D block model takes
+    // its pose from the context state, so repeated draws in one frame make it appear to jump,
+    // while 2D item sprites - which are pose independent - look fine.
+    if (screen == "hud_screen") {
+        drawPanelNative(event);
     }
-    if (mIconStack.isNull() || !mIconStack.mItem) {
-        return;
-    }
-    auto&         context      = event.uiRenderContext();
-    auto&         client       = context.mClient;
-    ItemRenderer* itemRenderer = client.getItemRenderer();
-    if (!itemRenderer) {
-        return;
-    }
-    try {
-        // The panel lays itself out in pixels while the engine draws in its own (scaled) UI
-        // units, so the published slot is converted through the screen view's size and the
-        // rectangle actually used is converted back for the panel's hole.
-        glm::vec2 const uiSize  = event.screenView().mSize;
-        float const     uiPerPx = uiSize.x > 0.0f ? uiSize.x / slot.displayW : 1.0f;
-        float const     pxPerUi = 1.0f / uiPerPx;
+}
 
+/// Drops legacy section-sign colour codes ("§a"), which the engine's text renderer would
+/// otherwise draw as glyphs.
+std::string stripSectionCodes(std::string const& in) {
+    std::string out;
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size(); ++i) {
+        auto const byte = static_cast<unsigned char>(in[i]);
+        if (byte == 0xC2 && i + 1 < in.size() && static_cast<unsigned char>(in[i + 1]) == 0xA7) {
+            i += 2; // the sign, its colour character, and the loop's ++i
+            continue;
+        }
+        out.push_back(in[i]);
+    }
+    return out;
+}
+
+void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) {
+    auto const& cfg     = Insight::cfg();
+    auto&       context = event.uiRenderContext();
+    auto&       client  = context.mClient;
+
+    // Fade with the display, advanced by elapsed time: this event fires once per screen in the
+    // stack, so a fixed per-call step would fade several times as fast.
+    auto const  now    = std::chrono::steady_clock::now();
+    float const elapsed =
+        mLastPanelTick.time_since_epoch().count() == 0
+            ? 0.0f
+            : std::chrono::duration<float>(now - mLastPanelTick).count();
+    mLastPanelTick     = now;
+    float const wanted = mVisible && !mText.empty() ? 1.0f : 0.0f;
+    float const speed  = cfg.client.transitionTime > 0.001f ? 1.0f / cfg.client.transitionTime : 1000.0f;
+    float const delta  = std::clamp(elapsed * speed, 0.0f, 1.0f);
+    mNativeFade = wanted > mNativeFade ? std::min(wanted, mNativeFade + delta) : std::max(wanted, mNativeFade - delta);
+    // Draw the newest content, but keep the previous one while the panel fades out: the sampler
+    // empties mText as soon as the subject is lost, so returning on that dropped the last lines
+    // and the box in a single frame - a blink where the fade should be.
+    if (!mText.empty()) {
+        mShownText = mText;
+    }
+    if (mNativeFade <= 0.001f) {
+        mShownText.clear();
+        return;
+    }
+    if (mShownText.empty()) {
+        return;
+    }
+
+    // The same "default" font a vanilla label resolves to - CJK included, which is what the
+    // earlier attempt got wrong by feeding the UI context text it never measured.
+    auto const& fontHandle = client.getMinecraftGame_DEPRECATED().getFontRepository()->getFontFromFontType("default");
+    Font&       font       = fontHandle.getFont();
+    Bedrock::NotNullNonOwnerPtr<FontHandle const> fontRef{
+        Bedrock::NonOwnerPointer<FontHandle const>{fontHandle}
+    };
+    auto& measure = context.getMeasureStrategy();
+
+    float const            fontScale = std::max(0.25f, cfg.client.fontSize);
+    TextMeasureData const  textData{fontScale, 0.0f, cfg.client.shadow, false, false, ::ui::TextAlignment::Left};
+    CaretMeasureData const caretData{-1, false};
+
+    float textR = 1.0f;
+    float textG = 1.0f;
+    float textB = 1.0f;
+    parseHexColor(cfg.client.textColor, textR, textG, textB);
+    mce::Color const textColor{textR, textG, textB, 1.0f};
+
+    // Laying the lines out here, with the engine's own measuring strategy, is what makes the
+    // icon cell and the text agree: both are placed in UI units in this one function.
+    std::vector<std::string> lines;
+    std::vector<float>       widths;
+    float                    widest   = 0.0f;
+    float                    lineStep = 0.0f;
+    for (auto& raw : util::splitLines(mShownText)) {
+        lines.push_back(stripSectionCodes(raw));
+        auto const measured = measure.measureText(fontRef, lines.back(), 4096.0f, 4096.0f, textData, caretData);
+        widths.push_back(measured.mSize->x);
+        widest   = std::max(widest, measured.mSize->x);
+        lineStep = std::max(lineStep, measured.mSize->y * 1.35f);
+    }
+    if (lineStep <= 0.0f) {
+        lineStep = fontScale * 12.0f;
+    }
+
+    float const padX     = 4.0f;
+    float const padY     = 3.0f;
+    float const iconSize = std::round(fontScale * 16.0f);
+    bool const  hasIcon  = !mIconStack.isNull() && static_cast<bool>(mIconStack.mItem);
+    float const iconCol  = hasIcon ? iconSize + padX : 0.0f;
+
+    glm::vec2 const screen = event.screenView().mSize;
+    // Quantised target size, frozen per subject and grow-only: the box - and the icon sitting at
+    // its left edge - must not follow every digit a ticking line changes. The subject decides
+    // the target once; later updates of the same subject may only make it bigger.
+    constexpr float kSizeStep = 8.0f;
+    float const     contentW  = widest + 2.0f * padX + iconCol;
+    float const     contentH =
+        std::max(static_cast<float>(lines.size()) * lineStep, hasIcon ? iconSize : 0.0f) + 2.0f * padY;
+    float const wantW = std::ceil(contentW / kSizeStep) * kSizeStep;
+    float const wantH = std::ceil(contentH / kSizeStep) * kSizeStep;
+    if (mBoxKey != mTargetKey) {
+        mBoxKey   = mTargetKey;
+        mBoxWantW = wantW;
+        mBoxWantH = wantH;
+    } else {
+        mBoxWantW = std::max(mBoxWantW, wantW);
+        mBoxWantH = std::max(mBoxWantH, wantH);
+    }
+    // The size actually drawn eases towards that target: this is the panel's size-change
+    // animation, and it covers a target switch and the same subject growing a line alike. The
+    // anchor is applied to the eased size below, so a centred panel also glides while resizing.
+    if (mBoxW <= 0.0f || mBoxH <= 0.0f) {
+        mBoxW = mBoxWantW; // first appearance: the fade covers it, so no grow-in from nothing
+        mBoxH = mBoxWantH;
+    } else {
+        float const tau = std::max(cfg.client.transitionTime, 0.001f);
+        float const k   = 1.0f - std::exp(-elapsed / tau);
+        mBoxW += (mBoxWantW - mBoxW) * k;
+        mBoxH += (mBoxWantH - mBoxH) * k;
+    }
+    float const boxW = mBoxW;
+    float const boxH = mBoxH;
+
+    // Anchor and offsets, the same semantics the configuration screen offers. offsetY is
+    // positive upwards, as in the config.
+    std::string const& anchor = cfg.client.anchor;
+    float              u      = 0.5f;
+    float              v      = 0.5f;
+    if (anchor.find("left") != std::string::npos) {
+        u = 0.0f;
+    }
+    if (anchor.find("right") != std::string::npos) {
+        u = 1.0f;
+    }
+    if (anchor.find("top") != std::string::npos) {
+        v = 0.0f;
+    }
+    if (anchor.find("bottom") != std::string::npos) {
+        v = 1.0f;
+    }
+    float const cx = u * screen.x + cfg.client.offsetX * screen.x;
+    float const cy = v * screen.y - cfg.client.offsetY * screen.y;
+
+    float left = u <= 0.001f ? cx : (u >= 0.999f ? cx - boxW : cx - boxW / 2.0f);
+    float top  = v <= 0.001f ? cy : (v >= 0.999f ? cy - boxH : cy - boxH / 2.0f);
+    left       = std::clamp(left, 2.0f, std::max(2.0f, screen.x - boxW - 2.0f));
+    top        = std::clamp(top, 2.0f, std::max(2.0f, screen.y - boxH - 2.0f));
+
+    // The rectangle the icon and the text are laid out from. It is derived from the eased size
+    // above, so the panel resizes and (with a centred anchor) travels in one motion.
+    float const boxL = left;
+    float const boxT = top;
+    float const boxR = left + boxW;
+    float const boxB = top + boxH;
+
+    // Rounded background. The UI context has no rounded primitive (Lamium's ui::card just clips
+    // one unit off each corner), so a corner is a staircase of plain fills whose inset follows a
+    // quarter circle; they batch with the rest of the UI and are flushed before the icon below.
+    auto roundedFill = [&context](
+                           float l,
+                           float t,
+                           float r,
+                           float b,
+                           mce::Color const& color,
+                           float             alpha,
+                           float             radius
+                       ) {
+        if (radius <= 0.5f || r - l <= 2.0f || b - t <= 2.0f) {
+            context.fillRectangle(RectangleArea{l, r, t, b}, color, alpha);
+            return;
+        }
+        radius = std::min(radius, std::min((r - l) / 2.0f, (b - t) / 2.0f));
+        // Full-height body first, then the top rows and their mirrored bottom rows.
+        context.fillRectangle(RectangleArea{l, r, t + radius, b - radius}, color, alpha);
+        int const rows = static_cast<int>(std::ceil(radius));
+        for (int i = 0; i < rows; ++i) {
+            float const y     = static_cast<float>(i);
+            float const dy    = radius - (y + 0.5f); // distance from the corner's centre
+            float const inset = radius - std::sqrt(std::max(0.0f, radius * radius - dy * dy));
+            context.fillRectangle(RectangleArea{l + inset, r - inset, t + y, t + y + 1.0f}, color, alpha);
+            context.fillRectangle(RectangleArea{l + inset, r - inset, b - y - 1.0f, b - y}, color, alpha);
+        }
+    };
+
+    if (cfg.client.background) {
+        float const alpha = std::clamp(cfg.client.backgroundAlpha, 0.0f, 1.0f) * mNativeFade;
+        float const radius = std::max(0.0f, std::round(3.0f * fontScale));
+        // A rounded outline is the outline colour drawn as a rounded rectangle with the panel
+        // fill laid over it one unit in - there is no rounded stroke to draw.
+        roundedFill(boxL, boxT, boxR, boxB, mce::Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.3f * alpha, radius);
+        roundedFill(
+            boxL + 1.0f,
+            boxT + 1.0f,
+            boxR - 1.0f,
+            boxB - 1.0f,
+            mce::Color{0.0f, 0.0f, 0.0f, 1.0f},
+            alpha,
+            std::max(0.0f, radius - 1.0f)
+        );
+    }
+
+    // The icon, drawn by the game's item renderer in these same units. Lamium flushes the
+    // batched rectangles first; without it the item comes out with the UI fill material bound.
+    if (auto* itemRenderer = client.getItemRenderer(); itemRenderer != nullptr && hasIcon) {
         BaseActorRenderContext renderContext(context.mScreenContext, client, client.getMinecraftGame_DEPRECATED());
-        auto* const            holder = client.getLocalPlayer();
-        int const              frame  = mIconStack.mItem->getAnimationFrameFor(holder, false, &mIconStack, true);
-        // A vanilla item icon is 16 UI units at scale 1, so the panel's slot sets the scale.
-        // The rest mirrors a vanilla slot: no foil pass, full opacity, drawn above the UI.
-        float const scale = std::max(0.25f, slot.size * uiPerPx / 16.0f);
-        float const uiX   = slot.x * uiPerPx;
-        float const uiY   = slot.y * uiPerPx;
-        itemRenderer->renderGuiItemNew(renderContext, mIconStack, frame, uiX, uiY, false, 1.0f, 1.0f, scale, 17);
-
-        ImGuiOverlay::IconHole hole;
-        hole.valid = true;
-        hole.x     = uiX * pxPerUi;
-        hole.y     = uiY * pxPerUi;
-        hole.size  = slot.size;
-        mOverlay.setIconHole(hole);
-    } catch (...) {
-        Insight::getInstance().getSelf().getLogger().debug("[icon] engine icon draw threw");
+        context.flushImages(mce::Color{1.0f, 1.0f, 1.0f, 1.0f}, 1.0f, HashedString{"ui_fillColor"});
+        auto* const holder = client.getLocalPlayer();
+        (void)holder;
+        // Frame 0, like Lamium's target card (InfoHud.cpp:202/289). The animation frame only
+        // means something for animated sprites (clock, compass); for the block branch it feeds
+        // the model's pose, so passing a per-frame value made every 3D icon jitter while 2D
+        // item icons stayed still.
+        int const frame = 0;
+        itemRenderer->renderGuiItemNew(
+            renderContext,
+            mIconStack,
+            frame,
+            boxL + padX,
+            boxT + ((boxB - boxT) - iconSize) / 2.0f,
+            false,
+            mNativeFade, // the panel's fade: the icon used to pop in at full opacity
+            1.0f,
+            std::max(0.25f, iconSize / 16.0f),
+            17
+        );
     }
+
+    // Text: one drawText per line inside the reserved area, flushed together, the way vanilla
+    // draws its labels. Follows the morphing box, like the icon above.
+    float y = boxT + padY;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        RectangleArea const area{
+            boxL + padX + iconCol,
+            boxL + padX + iconCol + widest + 1.0f,
+            y,
+            y + lineStep
+        };
+        context.drawText(
+            font,
+            area,
+            std::string{lines[i]},
+            textColor,
+            mNativeFade,
+            ::ui::TextAlignment::Left,
+            textData,
+            caretData
+        );
+        y += lineStep;
+    }
+    context.flushText(0.0f, std::nullopt);
 }
 
 } // namespace insight
