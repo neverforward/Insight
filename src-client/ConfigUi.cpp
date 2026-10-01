@@ -245,6 +245,23 @@ bool const* findBoolOption(std::string const& option) {
         {"passThroughLiquids",     &cfg.passThroughLiquids     },
         {"showEmpty",              &cfg.showEmpty              },
         {"entityEnabled",          &cfg.entityEnabled          },
+        {"display.name",           &cfg.display.name           },
+        {"display.facing",         &cfg.display.facing         },
+        {"display.identifier",     &cfg.display.identifier     },
+        {"display.translationKey", &cfg.display.translationKey },
+        {"display.position",       &cfg.display.position       },
+        {"display.distance",       &cfg.display.distance       },
+        {"display.light",          &cfg.display.light          },
+        {"display.emission",       &cfg.display.emission       },
+        {"display.extras",         &cfg.display.extras         },
+        {"entity.name",            &cfg.entity.name            },
+        {"entity.facing",          &cfg.entity.facing          },
+        {"entity.identifier",      &cfg.entity.identifier      },
+        {"entity.translationKey",  &cfg.entity.translationKey  },
+        {"entity.position",        &cfg.entity.position        },
+        {"entity.distance",        &cfg.entity.distance        },
+        {"entity.health",          &cfg.entity.health          },
+        {"entity.extras",          &cfg.entity.extras          },
         {"showOverlay",            &cfg.client.showOverlay     },
         {"hideOverlayInGui",       &cfg.client.hideOverlayInGui},
         {"background",             &cfg.client.background      },
@@ -368,12 +385,6 @@ std::string currentValueText(Row const& row, std::string const& locale) {
     }
     if (row.option == "overlayOnRemote") {
         return cfg.client.overlayOnRemote;
-    }
-    if (row.option == "format") {
-        return cfg.format;
-    }
-    if (row.option == "entityFormat") {
-        return cfg.entityFormat;
     }
     if (row.option == "emptyText") {
         return cfg.emptyText;
@@ -830,89 +841,200 @@ void ConfigUi::draw() {
     };
 
     // ---------- left column: settings ------------------------------------
+    // Tabbed rather than one long column: a dozen stacked sections were hard to
+    // scan, and the panel lines and the extras groups each belong together.
     ImGui::BeginGroup();
     ImGui::BeginChild("settingsList", ImVec2(leftW, -footerH));
-    drawSection(
-        "Info display",
-        {
-            {"Enabled",           "enabled",            Kind::Bool,  0.0f, 0.0f,  false, {}             },
-            {"Show overlay",      "showOverlay",        Kind::Bool,  0.0f, 0.0f,  false, {}             },
-            {"Hide in GUIs",      "hideOverlayInGui",   Kind::Bool,  0.0f, 0.0f,  false, {}             },
-            {"Max distance",      "maxDistance",        Kind::Float, 1.0f, 64.0f, false, {}             },
-            {"Interval (ticks)",  "intervalTicks",      Kind::Int,   1.0f, 40.0f, false, {}             },
-            {"Through liquids",   "passThroughLiquids", Kind::Bool,  0.0f, 0.0f,  false, {}             },
-            {"Show when empty",   "showEmpty",          Kind::Bool,  0.0f, 0.0f,  false, {}             },
-            {"Empty text",        "emptyText",          Kind::Text,  0.0f, 0.0f,  false, {}             },
-            {"Language",          "language",           Kind::Enum,  0.0f, 0.0f,  false, languageChoices},
-            {"Overlay on remote", "overlayOnRemote",    Kind::Enum,  0.0f, 0.0f,  false, {"off", "on"}  },
-            {"Entity info",       "entityEnabled",      Kind::Bool,  0.0f, 0.0f,  false, {}             },
-            {"Entity format",     "entityFormat",       Kind::Text,  0.0f, 0.0f,  true,  {}             },
-            {"Block format",      "format",             Kind::Text,  0.0f, 0.0f,  true,  {}             },
-    },
-        0
-    );
-    drawSection(
-        "Extras",
-        {
-            {"Extras (all)",         "extras.enabled",         Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Breaking time",        "extras.hardness",        Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Explosion resistance", "extras.blastResistance", Kind::Bool, 0.0f, 0.0f, false, {}},
-    },
-        100
-    );
-    drawSection(
-        "Containers",
-        {
-            {"Containers",     "extras.chest",     Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Bookshelf",      "extras.bookshelf", Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Shelf",          "extras.shelf",     Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Lectern",        "extras.lectern",   Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Pot",            "extras.pot",       Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Brewing stands", "extras.brewing",   Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Furnaces",       "extras.furnace",   Kind::Bool, 0.0f, 0.0f, false, {}},
-    },
-        120
-    );
-    drawSection(
-        "Block entities",
-        {
-            {"Jukebox",    "extras.jukebox",   Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Sign",       "extras.sign",      Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Banner",     "extras.banner",    Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Item frame", "extras.itemFrame", Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Flower pot", "extras.flowerPot", Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Painting",   "extras.painting",  Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Piston",     "extras.piston",    Kind::Bool, 0.0f, 0.0f, false, {}},
-    },
-        140
-    );
-    drawSection(
-        "Redstone",
-        {
-            {"Redstone",        "extras.redstone",      Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Repeaters",       "extras.repeater",      Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Comparators",     "extras.comparator",    Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Dispensers",      "extras.dispenser",     Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Candles",         "extras.candle",        Kind::Bool, 0.0f, 0.0f, false, {}},
-            {"Respawn anchors", "extras.respawnAnchor", Kind::Bool, 0.0f, 0.0f, false, {}},
-    },
-        160
-    );
-    drawSection(
-        "Block states",
-        {
-            {"Block states", "extras.misc", Kind::Bool, 0.0f, 0.0f, false, {}},
-    },
-        180
-    );
-    drawSection(
-        "Keys",
-        {
-            {"Key: open screen", "keyOpenConfig", Kind::Key, 0.0f, 0.0f, false, {}},
-            {"Key: toggle info", "keyToggleShow", Kind::Key, 0.0f, 0.0f, false, {}},
-    },
-        200
-    );
+    if (ImGui::BeginTabBar("settingsTabs")) {
+        if (ImGui::BeginTabItem(tr(locale, "General").c_str())) {
+            drawSection(
+                "General",
+                {
+                    {"Enabled",           "enabled",            Kind::Bool,  0.0f, 0.0f,  false, {}             },
+                    {"Show overlay",      "showOverlay",        Kind::Bool,  0.0f, 0.0f,  false, {}             },
+                    {"Hide in GUIs",      "hideOverlayInGui",   Kind::Bool,  0.0f, 0.0f,  false, {}             },
+                    {"Max distance",      "maxDistance",        Kind::Float, 1.0f, 64.0f, false, {}             },
+                    {"Interval (ticks)",  "intervalTicks",      Kind::Int,   1.0f, 40.0f, false, {}             },
+                    {"Through liquids",   "passThroughLiquids", Kind::Bool,  0.0f, 0.0f,  false, {}             },
+                    {"Show when empty",   "showEmpty",          Kind::Bool,  0.0f, 0.0f,  false, {}             },
+                    {"Empty text",        "emptyText",          Kind::Text,  0.0f, 0.0f,  false, {}             },
+                    {"Language",          "language",           Kind::Enum,  0.0f, 0.0f,  false, languageChoices},
+                    {"Overlay on remote", "overlayOnRemote",    Kind::Enum,  0.0f, 0.0f,  false, {"off", "on"}  },
+            },
+                0
+            );
+            ImGui::EndTabItem();
+        }
+        // The block panel: one switch per field, grouped by the line each feeds.
+        if (ImGui::BeginTabItem(tr(locale, "Block lines").c_str())) {
+            drawSection(
+                "Title line",
+                {
+                    {"Name",   "display.name",   Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Facing", "display.facing", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                20
+            );
+            drawSection(
+                "Details line",
+                {
+                    {"Type id",         "display.identifier",     Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Translation key", "display.translationKey", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                40
+            );
+            drawSection(
+                "Position line",
+                {
+                    {"Position", "display.position", Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Distance", "display.distance", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                60
+            );
+            drawSection(
+                "State line",
+                {
+                    {"Light",    "display.light",    Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Emission", "display.emission", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                80
+            );
+            drawSection(
+                "Extras",
+                {
+                    {"Extras lines", "display.extras", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                100
+            );
+            ImGui::EndTabItem();
+        }
+        // The entity panel is a layout of its own (renderEntityText) with its own
+        // switches: hit points instead of light level and emission, which describe a
+        // world position rather than the entity.
+        if (ImGui::BeginTabItem(tr(locale, "Entity info").c_str())) {
+            drawSection(
+                "Entity info",
+                {
+                    {"Entity info", "entityEnabled", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                300
+            );
+            drawSection(
+                "Title line",
+                {
+                    {"Name",   "entity.name",   Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Facing", "entity.facing", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                320
+            );
+            drawSection(
+                "Details line",
+                {
+                    {"Type id",         "entity.identifier",     Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Translation key", "entity.translationKey", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                340
+            );
+            drawSection(
+                "Position line",
+                {
+                    {"Position", "entity.position", Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Distance", "entity.distance", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                360
+            );
+            drawSection(
+                "State line",
+                {
+                    {"Health", "entity.health", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                380
+            );
+            drawSection(
+                "Extras",
+                {
+                    {"Extras lines", "entity.extras", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                400
+            );
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(tr(locale, "Extras").c_str())) {
+            drawSection(
+                "Extras",
+                {
+                    {"Extras (all)", "extras.enabled", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                120
+            );
+            drawSection(
+                "Extras: every block",
+                {
+                    {"Breaking time",        "extras.hardness",        Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Explosion resistance", "extras.blastResistance", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                130
+            );
+            drawSection(
+                "Extras: containers",
+                {
+                    {"Containers",     "extras.chest",     Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Bookshelf",      "extras.bookshelf", Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Shelf",          "extras.shelf",     Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Lectern",        "extras.lectern",   Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Pot",            "extras.pot",       Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Brewing stands", "extras.brewing",   Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Furnaces",       "extras.furnace",   Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                140
+            );
+            drawSection(
+                "Extras: block entities",
+                {
+                    {"Jukebox",    "extras.jukebox",   Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Sign",       "extras.sign",      Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Banner",     "extras.banner",    Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Item frame", "extras.itemFrame", Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Flower pot", "extras.flowerPot", Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Painting",   "extras.painting",  Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Piston",     "extras.piston",    Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                160
+            );
+            drawSection(
+                "Extras: redstone",
+                {
+                    {"Redstone",        "extras.redstone",      Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Repeaters",       "extras.repeater",      Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Comparators",     "extras.comparator",    Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Dispensers",      "extras.dispenser",     Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Candles",         "extras.candle",        Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Respawn anchors", "extras.respawnAnchor", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                180
+            );
+            drawSection(
+                "Extras: block states",
+                {
+                    {"Block states", "extras.misc", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                200
+            );
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(tr(locale, "Keys").c_str())) {
+            drawSection(
+                "Keys",
+                {
+                    {"Key: open screen", "keyOpenConfig", Kind::Key, 0.0f, 0.0f, false, {}},
+                    {"Key: toggle info", "keyToggleShow", Kind::Key, 0.0f, 0.0f, false, {}},
+            },
+                220
+            );
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
     ImGui::EndChild();
     ImGui::EndGroup();
 

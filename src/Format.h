@@ -18,14 +18,19 @@ struct LookInfo {
     std::string blockName; // localized display name (may fall back to the type id)
     std::string blockType; // e.g. "minecraft:stone"
     std::string blockKey;  // translation key, e.g. "tile.stone.stone"
-    std::string extras;    // extra per-block-type lines ("\n"-joined, may be empty)
-    std::string direction; // facing of the block for {direction} (may be empty)
-    std::string light;     // light level 0..15 at the block for {light} (may be empty)
-    std::string emission;  // light emitted by the block for {emission} (may be empty)
 
     // entity target fields
     std::string entityName; // player real name / name tag / localized type name
     std::string entityType; // e.g. "minecraft:zombie"
+    std::string entityKey;  // the key the name is resolved from, e.g. "entity.zombie"
+
+    // fields both targets use
+    std::string extras;    // extra per-type lines ("\n"-joined, may be empty)
+    std::string direction; // facing for the name line: a block's facing state, or an
+                           // entity's own yaw as a compass point (may be empty)
+    std::string light;     // light level 0..15 at the block (may be empty; blocks only)
+    std::string emission;  // light the block itself emits (may be empty; blocks only)
+
     int         health    = 0;
     int         maxHealth = 0;
     bool        hasHealth = false;
@@ -46,12 +51,16 @@ struct LookInfo {
 [[nodiscard]] LookInfo
 makeEntityLookInfo(std::string const& entityName, std::string const& entityType, int health, int maxHealth);
 
-// Pick the format that applies to the current target (per-type overrides) or
-// the global format / emptyText.
-[[nodiscard]] std::string pickFormat(Config const& cfg, LookInfo const& info);
+// Renders the panel text for one sample. Blocks and entities have separate layouts
+// and separate switches (DisplayOptions / EntityOptions in Config.h), so each has
+// its own renderer; both return an empty string when nothing is switched on. Labels
+// and compass words are translated for `localeCode` (the player's locale on the
+// server, the configured language on the client).
+[[nodiscard]] std::string renderBlockText(Config const& cfg, LookInfo const& info, std::string const& localeCode);
+[[nodiscard]] std::string renderEntityText(Config const& cfg, LookInfo const& info, std::string const& localeCode);
 
-// Renders the final display string for `info` using `cfg` (placeholder
-// substitution + color-code normalization).
-[[nodiscard]] std::string renderText(Config const& cfg, LookInfo const& info);
+// The text shown when nothing is targeted (showEmpty is on): the configured empty
+// text with its & colour codes resolved. There are no placeholders any more.
+[[nodiscard]] std::string renderEmptyText(Config const& cfg);
 
 } // namespace insight

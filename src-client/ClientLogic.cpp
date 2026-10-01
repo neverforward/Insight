@@ -151,7 +151,7 @@ splitColorRuns(std::string const& s, float defaultR, float defaultG, float defau
     };
 
     // The text mixes real UTF-8 (block names, CJK) with legacy single-byte
-    // section signs (0xA7) inserted by colorizeAmpersand(). Matching the raw
+    // section signs (0xA7) from `§` colour codes. Matching the raw
     // byte 0xA7 is wrong: it also occurs *inside* valid UTF-8 characters
     // (性 = E6 80 A7, 槽 = E6 A7 BD), and treating those as color codes ate the
     // rest of the name (黏性活塞 -> 黏塞, 槽位 -> ?位). So decode UTF-8 properly
@@ -793,17 +793,18 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             info.distance = entityDist;
             info.dimName  = clientDimName(region);
             info.extras   = buildEntityExtras(region, *entity, lang, cfg.extras);
+            // The entity panel has its own layout (renderEntityText): the entity's own
+            // yaw as the facing, its position, and hit points - but no light level and
+            // no emission, which describe a world position, not the entity.
+            info.entityKey = entityDisplayKey(entity);
+            info.direction = describeEntityFacing(*entity, lang);
             {
                 auto const& epos = entity->getPosition();
-                BlockPos    eblock(
-                    static_cast<int>(std::floor(epos.x)),
-                    static_cast<int>(std::floor(epos.y)),
-                    static_cast<int>(std::floor(epos.z))
-                );
-                info.light    = describeBlockLight(region, eblock);
-                info.emission = describeBlockEmission(region, eblock);
+                info.x           = static_cast<int>(std::floor(epos.x));
+                info.y           = static_cast<int>(std::floor(epos.y));
+                info.z           = static_cast<int>(std::floor(epos.z));
             }
-            text       = renderText(cfg, info);
+            text       = renderEntityText(cfg, info, lang);
             mTargetKey = "e:" + eType + "#" + std::to_string(entity->getOrCreateUniqueID().rawID);
             mIconStack = ItemStack{}; // entities have no block icon
             std::string const entityState = info.entityType + "|" + info.entityName + "|" + std::to_string(info.health);
@@ -824,7 +825,7 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             info.direction = describeBlockFacing(region, hit->pos, lang);
             info.light     = describeBlockLight(region, hit->pos);
             info.emission  = describeBlockEmission(region, hit->pos);
-            text       = renderText(cfg, info);
+            text       = renderBlockText(cfg, info, lang);
             mTargetKey = "b:" + hit->typeName + "@" + std::to_string(hit->pos.x) + "," + std::to_string(hit->pos.y)
                        + "," + std::to_string(hit->pos.z);
             // The same subject as an item stack, which is what the item renderer draws from.
@@ -889,8 +890,7 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
                 );
             }
         } else if (cfg.showEmpty) {
-            LookInfo info;
-            text       = renderText(cfg, info);
+            text       = renderEmptyText(cfg);
             mTargetKey = "empty";
         }
         mText    = text;

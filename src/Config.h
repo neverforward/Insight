@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <vector>
 
 namespace insight {
 
@@ -13,13 +12,6 @@ namespace insight {
 // aggregate reflection: keep this file a plain aggregate of primitives,
 // std::string / std::vector / nested plain aggregates.
 // ---------------------------------------------------------------------------
-
-// One optional per-block-type display override. `match` is matched against
-// the block type id (e.g. "minecraft:chest") as a case-insensitive substring.
-struct BlockOverride {
-    std::string match  = "";
-    std::string format = "";
-};
 
 // Server (BDS) only options.
 struct ServerOptions {
@@ -101,6 +93,72 @@ struct ClientOptions {
     int keyToggleShow = 0x4B; // show/hide the info display
 };
 
+// What the info display shows, one switch per field. This replaces the format /
+// entityFormat templates and the per-block-type format overrides: the mod now
+// assembles the lines itself, so a switch can never leave a stray placeholder, a
+// dangling separator or a blank line in the panel.
+//
+// The panel is laid out as:
+//   <name>§7(<facing>)
+//   §7<type id>(<translation key>)
+//   <x, y, z> §7<distance>
+//   §7<label> §f<value> ...                light level, light emission
+//   <extras>
+// Every part is optional, and the parts a target does not have (a facing on a block
+// whose states we do not understand, a light level we could not read) are skipped -
+// the brackets and the spaces only ever appear around parts that are there.
+struct DisplayOptions {
+    // --- first line: name and facing --------------------------------------
+    bool name   = true; // localized display name (block name / entity name)
+    bool facing = true; // facing / axis of the block, drawn as "§7(north)", only when
+                        // the block has a facing state we understand
+
+    // --- second line: type id and translation key -------------------------
+    bool identifier     = true;  // type id, e.g. "minecraft:stone"
+    bool translationKey = false; // translation key in brackets, e.g. "(tile.stone.stone)"
+
+    // --- third line: position and distance --------------------------------
+    bool position = true;  // x, y, z
+    bool distance = false; // distance to the target, in blocks
+
+    // --- fourth line: stats ------------------------------------------------
+    bool light    = true; // light level at the block
+    bool emission = true; // light the block itself emits
+
+    // --- extra lines ------------------------------------------------------
+    bool extras = true; // the per-block-type adapters (see BlockExtrasConfig)
+};
+
+// Entities have their own switches and their own layout (see renderEntityText):
+//   <name>§7(<facing>)
+//   §7<type id>(<translation key>)
+//   <x, y, z> §7<distance>
+//   §7<label> §f<value>                    hit points
+//   <extras>
+// Light level and light emission are deliberately not here: they describe a position
+// in the world, not the entity under the crosshair (a mob standing on glowstone is
+// not itself emitting light).
+struct EntityOptions {
+    // --- first line: name and facing --------------------------------------
+    bool name   = true; // player real name / name tag / localized type name
+    bool facing = true; // the entity's own yaw as a compass direction, "§7(north)"
+
+    // --- second line: type id and translation key -------------------------
+    bool identifier     = true;  // entity type id, e.g. "minecraft:zombie"
+    bool translationKey = false; // the key the name is resolved from, e.g. "(entity.zombie)"
+
+    // --- third line: position and distance --------------------------------
+    bool position = true;  // x, y, z of the entity
+    bool distance = false; // distance to the target, in blocks
+
+    // --- fourth line: hit points ------------------------------------------
+    bool health = true; // "current/max"; hidden for entities without health
+
+    // --- extra lines ------------------------------------------------------
+    bool extras = true; // per-entity adapters (equipment, ...); the interface is in
+                        // place, the adapters themselves come later
+};
+
 // Per-block extra info adapters. Every adapter has its own switch, so a line a
 // player does not care about can be silenced without losing the others;
 // `enabled` gates all of them. Data availability differs by platform: containers
@@ -152,8 +210,9 @@ struct Config {
     // field") and the mod refuses to load. 1 -> 2: added the client key
     // bindings (keyOpenConfig / keyToggleShow). 2 -> 3: every extras adapter got
     // its own switch (BlockExtrasConfig). 3 -> 4: client.transitionTime (panel
-    // fade).
-    int version = 4;
+    // fade). 4 -> 5: removed format / entityFormat / the per-block-type format
+    // overrides in favour of the per-field switches in DisplayOptions (display.*).
+    int version = 5;
 
     // Master switch for the whole mod.
     bool enabled = true;
@@ -177,40 +236,15 @@ struct Config {
     // Text shown when showEmpty is true and nothing is targeted.
     std::string emptyText = "";
 
-    // Format of the info, supports \n and the placeholders below:
-    //   {blockType}  block type id             e.g. "minecraft:stone"
-    //   {blockName}  localized block name      e.g. "石头" / "Stone"
-    //   {blockKey}   translation key           e.g. "tile.stone.stone"
-    //   {x} {y} {z}  integer position of the block
-    //   {dist}       distance to the block in blocks (e.g. 3.5)
-    //   {dim}        dimension name (overworld / nether / the_end)
-    //   {direction}  facing of the block ("北"/"north", "上"/"up"; empty when
-    //                the block has no facing state we understand)
-    //   {light}      light level at the block (0..15; empty when unavailable)
-    //   {emission}   light emitted by the block itself (0..15), e.g. 15 for
-    //                glowstone, 0 for stone
-    //   {extras}     per-block-type extra lines ("\n"-joined; empty when the
-    //                targeted block has no extra info or extras are disabled)
-    // Use & and the vanilla color codes (&0-9a-f, &l &o &n &m &r) or §-codes;
-    // & is converted to § automatically. && produces a literal &.
-    std::string format = "{blockName}\n§7{blockType} §8· §7{x}, {y}, {z}\n{extras}";
-
-    // Show entities under the crosshair (when an entity is closer than any
-    // hit block, or no block is hit).
+    // Entity target info: shown at all when this is on, and which parts of it appear
+    // is up to EntityOptions (entity.*) - blocks and entities no longer share a layout.
     bool entityEnabled = true;
 
-    // Format used while looking at an entity:
-    //   {entityName}  display name (player real name / name tag / localized type)
-    //   {entityType}  entity type id (e.g. "minecraft:zombie")
-    //   {health} {maxHealth}  hit points (hidden when the target has none)
-    //   {dist} {dim} also work.
-    // Kept language-neutral on purpose: a default containing English words
-    // would show up untranslated for every other locale.
-    std::string entityFormat = "{entityName}\n§7{entityType} §8· §7{health}/{maxHealth}";
-
-    // Optional per-block-type format overrides (first match wins, checked in
-    // the order given). Useful to give containers / machines a richer panel.
-    std::vector<BlockOverride> overrides;
+    // Which lines the info display shows. Blocks and entities have separate switch
+    // sets and separate layouts (see DisplayOptions / EntityOptions) - this is what
+    // the player configures instead of the old text templates.
+    DisplayOptions display;
+    EntityOptions  entity;
 
     // Per-block-type extra info (see BlockExtrasConfig).
     BlockExtrasConfig extras;

@@ -1,8 +1,11 @@
 #include "Format.h"
 
-#include <map>
-#include <string_view>
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <vector>
 
+#include "I18n.h"
 #include "Translation.h"
 #include "Util.h"
 
@@ -39,100 +42,159 @@ LookInfo makeEntityLookInfo(std::string const& entityName, std::string const& en
     return info;
 }
 
-std::string pickFormat(Config const& cfg, LookInfo const& info) {
-    if (!info.hasTarget) {
-        return cfg.emptyText;
+namespace {
+// The hit points of an entity as "current/max". Kept as its own function because a
+// bar in front of / behind the numbers is being considered again later.
+std::string healthText(int health, int maxHealth) {
+    if (maxHealth <= 0) {
+        return {};
     }
-    if (info.isEntity) {
-        return cfg.entityFormat;
-    }
-    for (auto const& ov : cfg.overrides) {
-        if (!ov.match.empty()) {
-            auto haystack = util::toLower(info.blockType);
-            auto needle   = util::toLower(ov.match);
-            if (haystack.find(needle) != std::string::npos) {
-                return ov.format;
-            }
-        }
-    }
-    return cfg.format;
+    return std::to_string(health) + "/" + std::to_string(maxHealth);
 }
 
-std::string renderText(Config const& cfg, LookInfo const& info) {
-    std::string text = pickFormat(cfg, info);
-
-    // placeholder substitution (values may be empty -> the placeholder is
-    // removed so it never shows up as raw text)
-    auto setVal = [&text](std::string_view ph, std::string const& value) {
-        util::replaceAll(text, std::string(ph), value);
-    };
-
-    if (!info.hasTarget) {
-        // nothing targeted: every placeholder vanishes
-        setVal("{blockType}", "");
-        setVal("{blockName}", "");
-        setVal("{blockKey}", "");
-        setVal("{x}", "");
-        setVal("{y}", "");
-        setVal("{z}", "");
-        setVal("{dist}", "");
-        setVal("{direction}", "");
-        setVal("{light}", "");
-        setVal("{emission}", "");
-        setVal("{entityName}", "");
-        setVal("{entityType}", "");
-        setVal("{health}", "");
-        setVal("{maxHealth}", "");
-    } else if (info.isEntity) {
-        setVal("{entityName}", info.entityName);
-        setVal("{entityType}", info.entityType);
-        std::string hpText = info.hasHealth ? std::to_string(info.health) : "";
-        setVal("{health}", hpText);
-        std::string maxHpText = info.hasHealth ? std::to_string(info.maxHealth) : "";
-        setVal("{maxHealth}", maxHpText);
-        // block placeholders are not used in entity view
-        setVal("{blockType}", "");
-        setVal("{blockName}", "");
-        setVal("{blockKey}", "");
-        setVal("{x}", "");
-        setVal("{y}", "");
-        setVal("{z}", "");
-        setVal("{direction}", "");
-        setVal("{light}", "");
-        setVal("{emission}", "");
-    } else {
-        setVal("{blockType}", info.blockType);
-        setVal("{blockName}", info.blockName);
-        setVal("{blockKey}", info.blockKey);
-        setVal("{x}", std::to_string(info.x));
-        setVal("{y}", std::to_string(info.y));
-        setVal("{z}", std::to_string(info.z));
-        setVal("{dist}", util::trimNumber(info.distance, 1));
-        setVal("{direction}", info.direction);
-        setVal("{light}", info.light);
-        setVal("{emission}", info.emission);
-        setVal("{entityName}", "");
-        setVal("{entityType}", "");
-        setVal("{health}", "");
-        setVal("{maxHealth}", "");
+// One "label value" part, the shape the per-block extras use: the label in the
+// panel's muted colour, the value in the default colour. Empty for a value this
+// target does not have, so a switch that is off - or a value we could not read -
+// drops its part instead of leaving a bare label behind.
+std::string labelled(std::string const& localeCode, char const* labelKey, std::string const& value) {
+    if (value.empty()) {
+        return {};
     }
-    setVal("{dim}", info.dimName);
-    setVal("{extras}", info.extras);
+    return std::string("§7") + tr(localeCode, labelKey) + " §f" + value;
+}
 
-    // trailing whitespace-only lines are removed so popups don't get blank gaps
-    auto lines = util::splitLines(text);
-    while (!lines.empty() && util::trimInPlace(lines.back()).empty()) {
-        lines.pop_back();
+// Joins the parts that survived with a single space, so a line with one part left
+// carries no stray separator.
+std::string joined(std::vector<std::string> const& parts) {
+    std::string line;
+    for (auto const& part : parts) {
+        if (part.empty()) {
+            continue;
+        }
+        if (!line.empty()) {
+            line += ' ';
+        }
+        line += part;
     }
-    text.clear();
+    return line;
+}
+
+// A line is only worth drawing when it has content: an empty line would show up as
+// a blank gap in the panel.
+void pushLine(std::vector<std::string>& lines, std::string line) {
+    if (!line.empty()) {
+        lines.push_back(std::move(line));
+    }
+}
+
+// Line 1: the name, with the facing hanging off it in the muted colour, e.g.
+// "Stone§7(north)". The brackets are only there when there is a facing to show.
+std::string nameLine(std::string const& name, std::string const& facing, bool showName, bool showFacing) {
+    std::string line = showName ? name : std::string{};
+    if (showFacing && !facing.empty()) {
+        line += "§7 (" + facing + ")";
+    }
+    return line;
+}
+
+// Line 2: the type id, with the key its name was resolved from in brackets right
+// after it, both muted, e.g. "§7minecraft:stone(tile.stone.stone)".
+std::string idLine(std::string const& id, std::string const& key, bool showId, bool showKey) {
+    std::string line;
+    if (showId && !id.empty()) {
+        line = "§7" + id;
+    }
+    if (showKey && !key.empty()) {
+        if (line.empty()) {
+            line = "§7";
+        }
+        line += " (" + key + ")";
+    }
+    return line;
+}
+
+// Line 3: x, y, z in the default colour, the distance muted behind it.
+std::string positionLine(LookInfo const& info, bool showPosition, bool showDistance) {
+    std::string line;
+    if (showPosition) {
+        line = std::to_string(info.x) + ", " + std::to_string(info.y) + ", " + std::to_string(info.z);
+    }
+    if (showDistance) {
+        auto const distance = util::trimNumber(info.distance, 1);
+        if (!distance.empty()) {
+            if (!line.empty()) {
+                line += ' ';
+            }
+            line += " §7[" + distance + "]";
+        }
+    }
+    return line;
+}
+
+// The extra per-type lines, last.
+void appendExtras(std::vector<std::string>& lines, std::string const& extras, bool show) {
+    if (!show) {
+        return;
+    }
+    for (auto& extra : util::splitLines(extras)) {
+        pushLine(lines, std::move(extra));
+    }
+}
+
+std::string joinLines(std::vector<std::string> const& lines) {
+    std::string text;
     for (size_t i = 0; i < lines.size(); ++i) {
         if (i) {
             text += '\n';
         }
         text += lines[i];
     }
-
-    return util::colorizeAmpersand(text);
+    return text;
 }
+
+} // namespace
+
+// The block panel: name (facing), type id (key), position (distance), light level
+// and light emission, then the per-block-type extras.
+std::string renderBlockText(Config const& cfg, LookInfo const& info, std::string const& localeCode) {
+    auto const&              d = cfg.display;
+    std::vector<std::string> lines;
+
+    pushLine(lines, nameLine(info.blockName, info.direction, d.name, d.facing));
+    pushLine(lines, idLine(info.blockType, info.blockKey, d.identifier, d.translationKey));
+    pushLine(lines, positionLine(info, d.position, d.distance));
+    pushLine(
+        lines,
+        joined({
+            d.light ? labelled(localeCode, "Light", info.light) : std::string{},
+            d.emission ? labelled(localeCode, "Emission", info.emission) : std::string{},
+        })
+    );
+    appendExtras(lines, info.extras, d.extras);
+    return joinLines(lines);
+}
+
+// The entity panel: name (compass facing), type id (key), position (distance), hit
+// points, then the per-entity extras. No light level and no light emission: those
+// describe a position in the world, not the entity under the crosshair.
+std::string renderEntityText(Config const& cfg, LookInfo const& info, std::string const& localeCode) {
+    auto const&              e = cfg.entity;
+    std::vector<std::string> lines;
+
+    pushLine(lines, nameLine(info.entityName, info.direction, e.name, e.facing));
+    pushLine(lines, idLine(info.entityType, info.entityKey, e.identifier, e.translationKey));
+    pushLine(lines, positionLine(info, e.position, e.distance));
+
+    std::string health;
+    if (e.health && info.hasHealth) {
+        health = healthText(info.health, info.maxHealth);
+    }
+    pushLine(lines, labelled(localeCode, "Health", health));
+
+    appendExtras(lines, info.extras, e.extras);
+    return joinLines(lines);
+}
+
+std::string renderEmptyText(Config const& cfg) { return cfg.emptyText; }
 
 } // namespace insight

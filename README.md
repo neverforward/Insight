@@ -38,12 +38,15 @@ present - the `cli` prefix keeps them apart (the same convention as LeviLamina's
 ```
 
 `<option>` is completed by the game: the candidates are exactly the configuration names
-(`format`, `maxWidth`, `extras.chest`, ...). A bad value reports the accepted ones, for example:
+(`display.name`, `entity.health`, `maxWidth`, `extras.chest`, ...). `display.health` no longer exists (health is
+`entity.health` now) and there is no `display.dimension` at all. A bad value reports the accepted
+ones, for example:
 
 ```
 /insight set channel actionbar
 /insight set maxDistance 24
-/insight set format {blockName} {x} {y} {z}
+/insight set display.distance true
+/insight set entity.health false
 /insight set extras.chest false
 ```
 
@@ -62,15 +65,27 @@ The client can also edit the configuration in a screen instead of the chat:
 - both bindings show up in the game's own key settings and can be remapped there - the config
   values `keyOpenConfig` / `keyToggleShow` are only the defaults (Windows virtual-key codes,
   `0` disables a binding);
-- each row shows the current value and opens an inline editor when clicked, the right column holds
-  a live preview of the panel plus the appearance settings, and every change is saved immediately
-  (the footer reports what happened);
+- each row shows the current value and opens an inline editor when clicked; the left column is
+  split into five tabs - **General**, **Block lines**, **Entity info**, **Extras** and **Keys** -
+  instead of one long column. **Block lines** holds the block switches grouped by the line they
+  feed: **Title line** (Name, Facing), **Details line** (Type id, Translation key), **Position
+  line** (Position, Distance), **State line** (Light, Emission) and **Extras** (Extras lines ->
+  `display.extras`). **Entity info** holds **Entity info** (`entityEnabled`) and the entity
+  switches in the same grouping: **Title line** (Name, Facing), **Details line** (Type id,
+  Translation key), **Position line** (Position, Distance), **State line** (Health) and
+  **Extras** (Extras lines -> `entity.extras`). **Extras** holds **Extras** (`extras.enabled`),
+  **Extras: every block**, **Extras: containers**, **Extras: block entities**, **Extras:
+  redstone** and **Extras: block states**, and **Keys** holds the two key bindings. The right
+  column still holds a live preview of the panel plus the appearance settings; every change is
+  saved immediately (the footer reports what happened);
 - while the screen is open the game does not receive keyboard/mouse input.
 
 
 ```jsonc
 {
-    "version": 4,                  // schema version; older files are merged automatically
+    "version": 5,                  // schema version; older files are merged automatically, and the
+                                   // templates of a version <= 4 file become display / entity
+                                   // switches (see below)
 
     "enabled": true,               // master switch
     "enabledByDefault": true,      // default for players; they can toggle it with /insight
@@ -81,14 +96,31 @@ The client can also edit the configuration in a screen instead of the chat:
     "showEmpty": false,            // keep showing something when aiming at air / beyond range
     "emptyText": "",               // text used while showEmpty is true
 
-    "format": "{blockName}\n§7{blockType} §8· §7{x}, {y}, {z}\n{extras}",  // display format
+    "display": {                   // what the block panel shows, one switch per part (replaces the old text templates)
+        "name": true,                  // title line: localized block name
+        "facing": true,                // title line: the block's facing / axis in brackets after the name, e.g. Stone§7(north); skipped when the block has no facing state we understand
+        "identifier": true,            // details line: block type id, e.g. minecraft:stone
+        "translationKey": false,       // details line: block translation key in brackets after the type id, e.g. minecraft:stone(tile.stone.stone)
+        "position": true,              // position line: x, y, z
+        "distance": false,             // position line: distance to the block in blocks
+        "light": true,                 // state line: light level at the block, e.g. Light 12
+        "emission": true,              // state line: light the block itself emits, e.g. Emission 15
+        "extras": true                 // per-block-type extra lines (gated by extras.enabled too)
+    },
 
-    "overrides": [                 // per-block-type format overrides (type id substring, first match wins)
-        { "match": "minecraft:chest", "format": "{blockName}\n§eChest\n{extras}" }
-    ],
+    "entity": {                    // what the entity panel shows (entityEnabled decides whether entities are targeted at all)
+        "name": true,                  // title line: player real name / name tag / localized type name
+        "facing": true,                // title line: the entity's own yaw as a compass direction, in brackets after the name
+        "identifier": true,            // details line: entity type id, e.g. minecraft:zombie
+        "translationKey": false,       // details line: the key the name is resolved from, in brackets after the type id, e.g. minecraft:zombie(entity.zombie)
+        "position": true,              // position line: x, y, z of the entity
+        "distance": false,             // position line: distance to the entity in blocks
+        "health": true,                // state line: current/max hit points; hidden for entities without health (items, projectiles, paintings)
+        "extras": true                 // per-entity extra lines (the same extras.* adapters as the block side, gated by extras.enabled too)
+    },
 
-    "extras": {                    // per-block extras (shown where {extras} appears)
-        "enabled": true,           // master switch
+    "extras": {                    // extras adapters, shared by the block and the entity panel (shown while display.extras / entity.extras is on)
+        "enabled": true,           // master switch for every adapter on both sides
         "hardness": true,          // breaking time of every block
         "blastResistance": true,   // explosion resistance
         "chest": true,             // container occupancy: items 12/27
@@ -115,7 +147,6 @@ The client can also edit the configuration in a screen instead of the chat:
     },
 
     "entityEnabled": true,         // also show entities under the crosshair
-    "entityFormat": "{entityName}\n§7{entityType} §8· §7{health}/{maxHealth}",
 
     "server": {
         "channel": "actionbar"     // none | actionbar | tip | popup | jukebox | system | chat
@@ -145,32 +176,120 @@ The client can also edit the configuration in a screen instead of the chat:
 > For detailed logs (every block state, container slot decisions, piston / decorated pot
 > diagnostics, ...) set `logLevel` to `5` in `PreLoaderConfig.json`.
 
-### format placeholders
+### display switches (blocks)
 
-| Placeholder | Meaning | Example |
+There is no text template to keep in sync any more: the mod assembles each panel itself, one switch
+per part. On the client it is drawn with the game's own UI renderer (engine font, engine item
+renderer for the subject icon, rounded background), and it fades in/out and resizes over
+`client.transitionTime`. Blocks and entities no longer share one switch set: `display.*` below
+describes a **block** panel, `entity.*` the **entity** panel. Every switch is a boolean: `true` /
+`false` (`on` / `off` and `1` / `0` work too), the same parsing as every other switch.
+
+| Switch | Default | Shows |
 | --- | --- | --- |
-| `{blockType}` | block type id | `minecraft:stone` |
-| `{blockName}` | localized block name | `Stone` / `石头` |
-| `{blockKey}` | translation key | `tile.stone.stone` |
-| `{x}` `{y}` `{z}` | integer block coordinates | `10` |
-| `{dist}` | distance (blocks) | `3.5` |
-| `{dim}` | dimension | `overworld` |
-| `{direction}` | facing of the block (empty when it has no facing state) | `north` / `北`, `up` / `上` |
-| `{light}` | light level at that position, 0-15 (empty when unavailable) | `12` |
-| `{emission}` | light emitted by the block **itself**, 0-15 | `15` (glowstone) / `0` (stone) |
-| `{extras}` | per-block extra lines (joined automatically, empty when there is no data) | `Items 12/27` |
+| `display.name` | `true` | localized block name, the title line |
+| `display.facing` | `true` | the block's facing / axis in muted brackets right after the name, e.g. `Stone§7(north)`; skipped when the block has no facing state we understand |
+| `display.identifier` | `true` | block type id, e.g. `minecraft:stone`, the details line |
+| `display.translationKey` | `false` | the block translation key in the same muted colour right after the type id, e.g. `§7minecraft:stone(tile.stone.stone)` |
+| `display.position` | `true` | `x, y, z`, the position line |
+| `display.distance` | `false` | distance to the block in blocks, behind the position |
+| `display.light` | `true` | light level at the block, shown as `Light 12` |
+| `display.emission` | `true` | light the block itself emits, shown as `Emission 15` |
+| `display.extras` | `true` | the per-block-type extra lines (the `extras.*` adapters, gated by `extras.enabled` too) |
 
-Colours: use `§` codes directly, or `&` codes (`&a &l &r`, ...); `&&` is a literal `&`.
-On server channels `§` codes work natively; the client panel supports `§0-9a-f` colours and `§r`
-reset, while modifier codes such as `§l/k/m/n/o` have no effect there.
+### entity switches (entities)
+
+`entityEnabled` decides whether entities are targeted and shown at all; the switches below only
+choose what an entity panel contains once one is targeted.
+
+| Switch | Default | Shows |
+| --- | --- | --- |
+| `entity.name` | `true` | player real name / name tag / localized type name, the title line |
+| `entity.facing` | `true` | the entity's **own yaw** as a compass direction, in muted brackets right after the name |
+| `entity.identifier` | `true` | entity type id, e.g. `minecraft:zombie`, the details line |
+| `entity.translationKey` | `false` | the key the name is resolved from, in the same muted colour right after the type id, e.g. `§7minecraft:zombie(entity.zombie)` |
+| `entity.position` | `true` | `x, y, z` of the entity, the position line |
+| `entity.distance` | `false` | distance to the entity in blocks, behind the position |
+| `entity.health` | `true` | hit points as `current/max`, e.g. `§7Health §f12/20`; hidden for entities without health (items, projectiles, paintings) |
+| `entity.extras` | `true` | the per-entity extra lines (container entities such as chest / hopper minecarts and boats with chest, paintings, worn equipment); the same `extras.*` adapters as the block side, gated by `extras.enabled` too |
+
+The lines those switches produce, in order. A block panel:
+
+```
+<name>§7(<facing>)                                         <- title line (display.name, display.facing)
+§7<type id>(<translation key>)                             <- details line (display.identifier, display.translationKey)
+<x, y, z> §7<distance>                                     <- position line (display.position, display.distance)
+§7<label> §f<value> ...                                    <- state line: light level, light emission
+<extras lines>                                             <- one line per adapter
+```
+
+and an entity panel:
+
+```
+<name>§7(<facing>)                                         <- title line (entity.name, entity.facing)
+§7<type id>(<translation key>)                             <- details line (entity.identifier, entity.translationKey)
+<x, y, z> §7<distance>                                     <- position line (entity.position, entity.distance)
+§7<label> §f<current>/<max>                                <- state line: hit points (entity.health)
+<extras lines>                                             <- one line per adapter
+```
+
+- the facing hangs off the **name** on line 1 in muted brackets (`§7`) - the block's own facing
+  state, or the entity's own yaw; simply absent when the switch is off or the target has no facing;
+- the translation key sits in brackets right after the **type id** on line 2, in the same muted
+  colour;
+- line 3 is the position in the default text colour followed by the distance in `§7`, separated by
+  one space;
+- line 4 holds the labelled stats, each as `§7<label> §f<value>` and separated by a single space:
+  the block panel shows the light level and the light the block emits (`Light 12 Emission 15`), the
+  entity panel the hit points (`Health 12/20`) - an entity has no light statistics;
+- the `·` that used to separate every format part is gone - the panel joins its parts with single
+  spaces. The one `·` left is inside a container's extras line, between the slot count and the total
+  item count (`Items 12/27 §7· §f35`);
+- the dimension is no longer shown anywhere.
+
+Parts that are switched off, and parts a target does not have (a facing on a block whose states we
+do not understand, health on an entity type that has none), are skipped, and empty lines are
+dropped, so the layout never comes out malformed. `emptyText` is still used when `showEmpty` is on
+and nothing is targeted; it no longer has placeholders.
+
+Colours: the panel's own lines already carry `§` codes (`§7` for the muted parts - the facing, the
+type id, the translation key, the distance and the stat labels - and `§f` for the values; the extras
+lines use the same two, plus a dark grey `§8` for their filler glyphs such as a truncated item list's
+`...` or an empty record's `-`), so there is nothing to colour yourself. The one text you write is
+`emptyText`: it is drawn exactly as typed - `&` is not a colour code, so write `§` codes directly if
+you want colour there.
+
+#### Upgrading an old configuration
+
+A `config.json` that still carries a schema version below 5 described its panel with the old
+`format` / `entityFormat` text templates. Before the configuration library merges the new defaults
+in and rewrites the file, the mod reads those templates once and turns them into switches, one
+group at a time: the old block `format` template decides the `display.*` switches and the old
+`entityFormat` template decides the `entity.*` switches, a placeholder the template used meaning
+that part stays visible and a placeholder it never used meaning that switch is off. An old default
+`format` that used `{blockName}`, `{blockType}`, `{x} {y} {z}` and `{extras}` therefore ends up with
+`display.name`, `display.identifier`, `display.position` and `display.extras` on and the rest of the
+block group off, and the same rule maps the entity template's placeholders onto their `entity.*`
+switch - for example `{entityName}` -> `entity.name`, `{entityType}` -> `entity.identifier`,
+`{x} {y} {z}` -> `entity.position`, `{health}` / `{maxHealth}` -> `entity.health`, `{extras}` ->
+`entity.extras` - so a player who upgrades keeps the panel they had. A template that is not in the
+file at all leaves its group at the defaults instead of switching everything off. The migration runs
+only for a file below version 5 and the result is saved immediately. The per-block-type `overrides`
+have no equivalent and are still dropped, and `{dim}` has no switch to feed either - the dimension is
+not shown any more - so it is ignored along with them.
 
 #### Extras
 
-Put `{extras}` anywhere in `format` to append the extra lines (middle or end, either is fine).
+The extra lines are appended while the panel's own switch is on - `display.extras` for a block,
+`entity.extras` for an entity - and `extras.enabled` gates every adapter on **both** sides, so it
+silences block and entity extras alike. The entity panel is not a separate set of adapters: it reuses
+the same `extras.*` switches (a container entity such as a chest or hopper minecart is `extras.chest`,
+a painting `extras.painting`, and the worn equipment of players, armor stands and armored mobs is
+`extras.misc`). Every adapter below has a switch of its own:
 
 | Switch | Contents |
 | --- | --- |
-| `extras.chest` | container occupancy: `Items 12/27` (chest/trapped chest/barrel/hopper/dropper/dispenser/copper chest/shulker box/crafter/chiseled bookshelf/lectern/decorated pot, plus chest minecart, hopper minecart and boat with chest) |
+| `extras.chest` | container occupancy: `Items 12/27` (plus the total item count behind a `·`, e.g. `Items 12/27 §7· §f35`) - chest/trapped chest/barrel/hopper/dropper/dispenser/copper chest/shulker box/crafter/chiseled bookshelf/lectern/decorated pot, plus chest minecart, hopper minecart and boat with chest |
 | `extras.furnace` | furnace / blast furnace / smoker: `Slots 1/3` |
 | `extras.brewing` | brewing stand: `Slots x/5` |
 | `extras.redstone` | comparator, redstone wire / repeater, pressure plate, target: `Signal 12` |

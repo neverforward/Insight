@@ -23,6 +23,10 @@ findLookEntity(BlockSource& region, Actor const* except, Vec3 const& from, Vec3 
 // Display name of an entity: player real name / name tag / localized type.
 [[nodiscard]] std::string entityDisplayName(Actor const* actor, std::string const& langCode);
 
+// The vanilla localization key the display name above is resolved from, e.g.
+// "entity.zombie" - what the entity panel shows in brackets.
+[[nodiscard]] std::string entityDisplayKey(Actor const* actor);
+
 // Whether this entity has hit points at all (false for items, projectiles,
 // paintings, ...). Asked directly at the engine's health attribute, so no list
 // of entity types is involved; when it returns false the HP placeholders stay

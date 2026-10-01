@@ -283,7 +283,18 @@ void ServerLogic::onTick(ll::event::ServerLevelTickEvent& event) {
             info.distance = entityDist;
             info.dimName  = dimensionName(region);
             info.extras   = buildEntityExtras(region, *entity, sp.getLanguageCode(), cfg.extras);
-            text          = renderText(cfg, info);
+            // The entity panel has its own layout (renderEntityText): the entity's own
+            // yaw as the facing, its position, and hit points - but no light level and
+            // no emission, which describe a world position, not the entity.
+            info.entityKey = entityDisplayKey(entity);
+            info.direction = describeEntityFacing(*entity, sp.getLanguageCode());
+            {
+                auto const& epos = entity->getPosition();
+                info.x           = static_cast<int>(std::floor(epos.x));
+                info.y           = static_cast<int>(std::floor(epos.y));
+                info.z           = static_cast<int>(std::floor(epos.z));
+            }
+            text          = renderEntityText(cfg, info, sp.getLanguageCode());
         } else if (hit) {
             auto info = makeBlockLookInfo(*hit, sp.getLanguageCode());
             info.dimName   = dimensionName(region);
@@ -291,10 +302,9 @@ void ServerLogic::onTick(ll::event::ServerLevelTickEvent& event) {
             info.direction = describeBlockFacing(region, hit->pos, sp.getLanguageCode());
             info.light     = describeBlockLight(region, hit->pos);
             info.emission  = describeBlockEmission(region, hit->pos);
-            text           = renderText(cfg, info);
+            text           = renderBlockText(cfg, info, sp.getLanguageCode());
         } else if (cfg.showEmpty) {
-            LookInfo info;
-            text = renderText(cfg, info);
+            text = renderEmptyText(cfg);
         } else {
             return true;
         }

@@ -1127,6 +1127,18 @@ std::string describeBlockFacing(IConstBlockSource const& region, BlockPos const&
     return {};
 }
 
+std::string describeEntityFacing(Actor const& actor, std::string const& langCode) {
+    try {
+        // Bedrock yaw: 0 = south (+Z), 90 = west (-X), 180 = north (-Z), 270 = east.
+        // The same convention compassWord() already uses for block states.
+        float const yaw  = actor.getRotation().x;
+        int const   step = static_cast<int>(std::floor(yaw / 90.0f + 0.5f));
+        return compassWord(langCode, step);
+    } catch (...) {
+        return {};
+    }
+}
+
 std::string describeBlockLight(IConstBlockSource const& region, BlockPos const& pos) {
     try {
         float brightness = region.getBrightness(pos); // 0..1

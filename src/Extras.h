@@ -42,6 +42,11 @@ describeBlockFacing(IConstBlockSource const& region, BlockPos const& pos, std::s
 // Light emitted by the block itself (0..15) for the {emission} placeholder.
 [[nodiscard]] std::string describeBlockEmission(IConstBlockSource const& region, BlockPos const& pos);
 
+// Compass facing of an entity's own yaw, for the name line of the entity panel.
+// Returns a localized word ("北" / "north", ...), or an empty string when the
+// rotation cannot be read.
+[[nodiscard]] std::string describeEntityFacing(Actor const& actor, std::string const& langCode);
+
 // Live container snapshot, client only. While a container UI is open the
 // engine keeps an up-to-date container for the UI, whereas the world copy we
 // otherwise read stays stale until the chunk is reloaded. The client captures

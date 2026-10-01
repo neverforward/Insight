@@ -1,6 +1,8 @@
 #include "Insight.h"
 
 #include <cstdint>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 #include "ll/api/Config.h"
@@ -91,6 +93,189 @@ void saveConfigFile() {
             Insight::configPath().string()
         );
     }
+}
+
+// The whole configuration file as text, or empty when it cannot be read. Used by the
+// two hand-written upgrades below, before ll::config gets its hands on the file.
+std::string readTextFile(std::filesystem::path const& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return {};
+    }
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+
+// --- hand-written shape upgrade ----------------------------------------------
+// ll::config deserializes the whole struct in one go, so a file written before a
+// group of settings existed fails to load entirely ("missing required field ...")
+// and the mod falls back to the defaults - losing every value the player had. This
+// runs before the file is read and adds only what is absent, taken straight from the
+// current defaults: a value that is there always wins, a missing group (or a missing
+// key inside one) is inserted with its default.
+//
+// The "version" is deliberately left alone. It is what makes ll::config merge by
+// itself; this is the upgrade for a file that already claims the current version but
+// has an older shape, which that mechanism cannot see.
+bool fillMissingGroups(std::filesystem::path const& path) {
+    std::error_code error;
+    if (!std::filesystem::exists(path, error)) {
+        return false;
+    }
+    std::string const content = readTextFile(path);
+    if (content.empty()) {
+        return false;
+    }
+    nlohmann::ordered_json fileJson;
+    try {
+        fileJson = nlohmann::ordered_json::parse(content, nullptr, true, true);
+    } catch (...) {
+        return false; // a broken file is left to the normal error path
+    }
+    if (!fileJson.is_object()) {
+        return false;
+    }
+    auto defaults = ll::reflection::serialize<nlohmann::ordered_json>(Config{});
+    if (!defaults) {
+        return false;
+    }
+
+    auto fill = [](auto&& self, nlohmann::ordered_json& target, nlohmann::ordered_json const& source) -> bool {
+        if (!target.is_object()) {
+            return false;
+        }
+        bool changed = false;
+        for (auto const& [key, value] : source.items()) {
+            if (!target.contains(key)) {
+                target[key] = value;
+                changed     = true;
+            } else if (value.is_object()) {
+                changed = self(self, target[key], value) || changed;
+            }
+        }
+        return changed;
+    };
+    if (!fill(fill, fileJson, *defaults)) {
+        return false;
+    }
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return false;
+    }
+    out << fileJson.dump(4);
+    return true;
+}
+
+// --- legacy display migration ------------------------------------------------
+// A configuration written by version <= 4 rendered the panel from a text template
+// ("format" / "entityFormat"; the per-block-type "overrides" are simply dropped).
+// Version 5 has one switch per field instead, so the templates are read once and
+// turned into switches: a placeholder the old template used means that field stays
+// visible, one it never used is switched off. The panel a player had before the
+// upgrade is what they keep.
+//
+// The raw file is scanned before ll::config merges the current defaults into it and
+// rewrites it, and the migration only runs for a file that still carries an older
+// version - running it on every load would undo the switches the player has changed
+// since the upgrade.
+
+// The string value of `"key": "..."` in a JSON document; empty when the key is not
+// there. Escape sequences are kept verbatim - only the placeholder text inside the
+// value is ever inspected.
+std::string rawJsonString(std::string const& text, std::string const& key) {
+    auto const at = text.find("\"" + key + "\"");
+    if (at == std::string::npos) {
+        return {};
+    }
+    auto const colon = text.find(':', at + key.size() + 2);
+    if (colon == std::string::npos) {
+        return {};
+    }
+    auto const open = text.find('"', colon + 1);
+    if (open == std::string::npos) {
+        return {};
+    }
+    std::string value;
+    for (size_t i = open + 1; i < text.size(); ++i) {
+        if (text[i] == '\\' && i + 1 < text.size()) {
+            value += text[i];
+            value += text[++i];
+            continue;
+        }
+        if (text[i] == '"') {
+            break;
+        }
+        value += text[i];
+    }
+    return value;
+}
+
+// The integer value of `"key": 12`, or `fallback` when it cannot be read.
+long rawJsonInt(std::string const& text, std::string const& key, long fallback) {
+    auto const at = text.find("\"" + key + "\"");
+    if (at == std::string::npos) {
+        return fallback;
+    }
+    auto const colon = text.find(':', at + key.size() + 2);
+    if (colon == std::string::npos) {
+        return fallback;
+    }
+    try {
+        return std::stol(text.substr(colon + 1));
+    } catch (...) {
+        return fallback;
+    }
+}
+
+// Turns the display templates of a version <= 4 configuration into switches.
+// Returns false when the file has no templates, i.e. when there is nothing to do.
+//
+// A placeholder the old template used means that field stayed visible, one it never
+// used is switched off. The block template feeds the block switches (display.*) and
+// the entity template the entity ones (entity.*); a template that is not in the file
+// at all leaves its group at the defaults instead of switching everything off.
+bool migrateLegacyDisplay(std::string const& fileText, Config& cfg) {
+    std::string const blockFormat  = rawJsonString(fileText, "format");
+    std::string const entityFormat = rawJsonString(fileText, "entityFormat");
+    if (blockFormat.empty() && entityFormat.empty()) {
+        return false;
+    }
+    auto anyUsed = [](std::string const& text, std::initializer_list<char const*> placeholders) {
+        for (auto const* placeholder : placeholders) {
+            if (text.find(placeholder) != std::string::npos) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (!blockFormat.empty()) {
+        auto& d          = cfg.display;
+        d.name           = anyUsed(blockFormat, {"{blockName}"});
+        d.facing         = anyUsed(blockFormat, {"{direction}"});
+        d.identifier     = anyUsed(blockFormat, {"{blockType}"});
+        d.translationKey = anyUsed(blockFormat, {"{blockKey}"});
+        d.position       = anyUsed(blockFormat, {"{x}", "{y}", "{z}"});
+        d.distance       = anyUsed(blockFormat, {"{dist}"});
+        d.light          = anyUsed(blockFormat, {"{light}"});
+        d.emission       = anyUsed(blockFormat, {"{emission}"});
+        d.extras         = anyUsed(blockFormat, {"{extras}"});
+    }
+    if (!entityFormat.empty()) {
+        auto& e   = cfg.entity;
+        e.name    = anyUsed(entityFormat, {"{entityName}"});
+        e.facing  = anyUsed(entityFormat, {"{direction}"});
+        e.identifier = anyUsed(entityFormat, {"{entityType}"});
+        e.position   = anyUsed(entityFormat, {"{x}", "{y}", "{z}"});
+        e.distance   = anyUsed(entityFormat, {"{dist}"});
+        e.health     = anyUsed(entityFormat, {"{health}", "{maxHealth}"});
+        e.extras     = anyUsed(entityFormat, {"{extras}"});
+        // the old entity template had no key placeholder, so entity.translationKey
+        // stays at its default
+    }
+    return true;
 }
 
 bool parseBool(std::string const& value, bool& out) {
@@ -239,14 +424,57 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
     if (lower == "emptytext") {
         return setText(gConfig.emptyText, "emptyText");
     }
-    if (lower == "format") {
-        return setText(gConfig.format, "format");
-    }
     if (lower == "entityenabled") {
         return setBool(gConfig.entityEnabled, "entityEnabled");
     }
-    if (lower == "entityformat") {
-        return setText(gConfig.entityFormat, "entityFormat");
+
+    // --- display switches: one per field the panel can show (DisplayOptions).
+    // These are what replaced the format / entityFormat text templates. ---
+    {
+        struct DisplaySwitch {
+            char const* name;
+            bool*       target;
+        };
+        for (auto const& entry : {
+                 DisplaySwitch{"display.name",           &gConfig.display.name          },
+                 DisplaySwitch{"display.identifier",     &gConfig.display.identifier    },
+                 DisplaySwitch{"display.position",       &gConfig.display.position      },
+                 DisplaySwitch{"display.distance",       &gConfig.display.distance      },
+                 DisplaySwitch{"display.translationKey", &gConfig.display.translationKey},
+                 DisplaySwitch{"display.facing",         &gConfig.display.facing        },
+                 DisplaySwitch{"display.light",          &gConfig.display.light         },
+                 DisplaySwitch{"display.emission",       &gConfig.display.emission      },
+                 DisplaySwitch{"display.extras",         &gConfig.display.extras        },
+             }) {
+            // the option arrives lower-cased; the table keeps the canonical
+            // spelling so messages show it as documented
+            if (lower == util::toLower(entry.name)) {
+                return setBool(*entry.target, entry.name);
+            }
+        }
+    }
+
+    // --- entity switches: the entity panel has its own layout and its own set of
+    // fields (EntityOptions), so these are separate from the block ones above ---
+    {
+        struct EntitySwitch {
+            char const* name;
+            bool*       target;
+        };
+        for (auto const& entry : {
+                 EntitySwitch{"entity.name",           &gConfig.entity.name          },
+                 EntitySwitch{"entity.facing",         &gConfig.entity.facing        },
+                 EntitySwitch{"entity.identifier",     &gConfig.entity.identifier    },
+                 EntitySwitch{"entity.translationKey", &gConfig.entity.translationKey},
+                 EntitySwitch{"entity.position",       &gConfig.entity.position      },
+                 EntitySwitch{"entity.distance",       &gConfig.entity.distance      },
+                 EntitySwitch{"entity.health",         &gConfig.entity.health        },
+                 EntitySwitch{"entity.extras",         &gConfig.entity.extras        },
+             }) {
+            if (lower == util::toLower(entry.name)) {
+                return setBool(*entry.target, entry.name);
+            }
+        }
     }
 
     // --- server side ------------------------------------------------------
@@ -384,6 +612,17 @@ bool Insight::load() {
     // version, loadConfigFile merges the current defaults in and we persist the
     // upgraded copy right away. A broken file must never keep the mod from
     // loading, so failures fall back to the defaults and rewrite the file.
+    //
+    // The old text templates are read from the raw file first: once ll::config has
+    // merged and rewritten it, they are gone (see migrateLegacyDisplay). A file that
+    // already carries the current version but an older shape is repaired here too.
+    if (fillMissingGroups(configPath())) {
+        logger.info("Configuration file was missing newer option groups; they were added with their defaults.");
+    }
+    std::string const configText  = readTextFile(configPath());
+    long const        fileVersion = rawJsonInt(configText, "version", 0);
+    bool const        migrate     = fileVersion < gConfig.version;
+
     bool loaded = false;
     try {
         loaded = loadConfigFile(gConfig);
@@ -400,6 +639,14 @@ bool Insight::load() {
             "Configuration file was missing or outdated - saving upgraded configuration (version {}).",
             gConfig.version
         );
+        saveConfigFile();
+    }
+
+    // A version <= 4 file described its panel with text templates, which no longer
+    // exist: turn what they showed into display switches, so the panel looks the way
+    // it did before the upgrade.
+    if (migrate && migrateLegacyDisplay(configText, gConfig)) {
+        logger.info("Migrated the old format / entityFormat templates into display switches.");
         saveConfigFile();
     }
 

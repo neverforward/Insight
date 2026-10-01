@@ -117,6 +117,13 @@ std::string entityDisplayName(Actor const* actor, std::string const& langCode) {
     return shortId(actor->getTypeName());
 }
 
+std::string entityDisplayKey(Actor const* actor) {
+    if (!actor) {
+        return {};
+    }
+    return "entity." + shortId(actor->getTypeName());
+}
+
 bool entityHasHealth(Actor const& actor) {
     // Health is an engine attribute, not a per-type flag: an entity whose
     // definition has no minecraft:health component simply has no attribute

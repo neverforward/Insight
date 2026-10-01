@@ -35,33 +35,6 @@ inline std::string& trimInPlace(std::string& s) {
     return s;
 }
 
-// Convert the classic `&code` color codes (e.g. &a &l &r) into `§code`,
-// leaving `&&` as a literal ampersand. Existing § characters are untouched.
-[[nodiscard]] inline std::string colorizeAmpersand(std::string s) {
-    static constexpr std::string_view codes = "0123456789abcdefklmnor";
-    std::string                       out;
-    out.reserve(s.size());
-    for (size_t i = 0; i < s.size(); ++i) {
-        char c = s[i];
-        if (c == '&' && i + 1 < s.size()) {
-            char n = s[i + 1];
-            if (n == '&') {
-                out += '&';
-                ++i;
-                continue;
-            }
-            if (codes.find(n) != std::string_view::npos) {
-                out += '\xA7';
-                out += n;
-                ++i;
-                continue;
-            }
-        }
-        out += c;
-    }
-    return out;
-}
-
 // Format a distance / coordinate nicely, trimming trailing zeros: 3.50 -> 3.5, 10.0 -> 10
 [[nodiscard]] inline std::string trimNumber(double v, int maxDecimals = 2) {
     std::ostringstream oss;
