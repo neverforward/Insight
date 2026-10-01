@@ -997,9 +997,11 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
         lineStep = fontScale * 12.0f;
     }
 
-    float const padX     = 4.0f;
-    float const padY     = 3.0f;
-    float const iconSize = std::round(fontScale * 16.0f);
+    float const padX = 4.0f;
+    float const padY = 3.0f;
+    // Two text lines tall, measured from the same line height the text uses, so the icon reads
+    // as the subject's headline and still follows client.fontSize.
+    float const iconSize = std::round(lineStep * 1.5f);
     bool const  hasIcon  = !mIconStack.isNull() && static_cast<bool>(mIconStack.mItem);
     float const iconCol  = hasIcon ? iconSize + padX : 0.0f;
 

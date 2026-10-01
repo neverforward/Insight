@@ -89,6 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The subject icon was centred on the whole panel, so a block with many extra lines left it
+  floating in the middle of the box, away from the name it belongs to. It sits at the top of its
+  cell now, level with the first text line, and it is one and a half text lines tall (measured from
+  the same line height the text uses, so it still follows `client.fontSize`) instead of the fixed
+  16 units that made it read as a bullet next to the first line.
 - `/insight set <option> <value>` rejected every number - `/insight set maxDistance 24` answered
   `Syntax error: Unexpected "24"` - and anything containing a space: the value was declared as a
   `std::string`, which looks like an identifier to the command parser. It is read as raw text now, so
@@ -266,20 +271,9 @@ First release: the mod template has been turned into the actual mod.
 
 - The mod template leftovers (`src/mod/MyMod.*`).
 
-
-  [Unreleased]: https://github.com/neverforward/Insight/compare/v0.2.0...HEAD
-  [0.2.0]: https://github.com/neverforward/Insight/compare/v0.1.0...v0.2.0
-  [0.1.0]: https://github.com/neverforward/Insight/compare/v0.0.3...v0.1.0
-  [0.0.3]: https://github.com/neverforward/Insight/compare/v0.0.2...v0.0.3
-  [0.0.2]: https://github.com/neverforward/Insight/compare/v0.0.1...v0.0.2
-
 [Unreleased]: https://github.com/neverforward/Insight/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/neverforward/Insight/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/neverforward/Insight/compare/v0.0.3...v0.1.0
-[0.0.3]: https://github.com/neverforward/Insight/compare/v0.0.2...v0.0.3
-[0.0.2]: https://github.com/neverforward/Insight/compare/v0.0.1...v0.0.2
-[0.0.1]: https://github.com/neverforward/Insight/releases/tag/v0.0.1
-pare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/neverforward/Insight/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/neverforward/Insight/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/neverforward/Insight/releases/tag/v0.0.1
