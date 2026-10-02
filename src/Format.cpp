@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "Colors.h"
 #include "I18n.h"
 #include "Translation.h"
 #include "Util.h"
@@ -55,12 +56,18 @@ std::string healthText(int health, int maxHealth) {
 // One "label value" part, the shape the per-block extras use: the label in the
 // panel's muted colour, the value in the default colour. Empty for a value this
 // target does not have, so a switch that is off - or a value we could not read -
-// drops its part instead of leaving a bare label behind.
-std::string labelled(std::string const& localeCode, char const* labelKey, std::string const& value) {
+// drops its part instead of leaving a bare label behind. Both colours come from
+// colors.label / colors.value.
+std::string labelled(
+    std::string const&  localeCode,
+    char const*         labelKey,
+    std::string const&  value,
+    ColorOptions const& colors
+) {
     if (value.empty()) {
         return {};
     }
-    return std::string("§7") + tr(localeCode, labelKey) + " §f" + value;
+    return colored(colors.label, tr(localeCode, labelKey)) + " " + colored(colors.value, value);
 }
 
 // Joins the parts that survived with a single space, so a line with one part left
@@ -88,36 +95,52 @@ void pushLine(std::vector<std::string>& lines, std::string line) {
 }
 
 // Line 1: the name, with the facing hanging off it in the muted colour, e.g.
-// "Stone§7(north)". The brackets are only there when there is a facing to show.
-std::string nameLine(std::string const& name, std::string const& facing, bool showName, bool showFacing) {
-    std::string line = showName ? name : std::string{};
+// "Stone§7 (north)". The brackets are only there when there is a facing to show.
+std::string nameLine(
+    std::string const&  name,
+    std::string const&  facing,
+    bool                showName,
+    bool                showFacing,
+    ColorOptions const& colors
+) {
+    std::string line = showName ? colored(colors.name, name) : std::string{};
     if (showFacing && !facing.empty()) {
-        line += "§7 (" + facing + ")";
+        if (!line.empty()) {
+            line += ' ';
+        }
+        line += colored(colors.facing, "(" + facing + ")");
     }
     return line;
 }
 
 // Line 2: the type id, with the key its name was resolved from in brackets right
-// after it, both muted, e.g. "§7minecraft:stone(tile.stone.stone)".
-std::string idLine(std::string const& id, std::string const& key, bool showId, bool showKey) {
+// after it, e.g. "§8minecraft:stone §8(tile.stone.stone)".
+std::string idLine(
+    std::string const&  id,
+    std::string const&  key,
+    bool                showId,
+    bool                showKey,
+    ColorOptions const& colors
+) {
     std::string line;
     if (showId && !id.empty()) {
-        line = "§7" + id;
+        line = colored(colors.identifier, id);
     }
     if (showKey && !key.empty()) {
-        if (line.empty()) {
-            line = "§7";
+        if (!line.empty()) {
+            line += ' ';
         }
-        line += " (" + key + ")";
+        line += colored(colors.translationKey, "(" + key + ")");
     }
     return line;
 }
 
-// Line 3: x, y, z in the default colour, the distance muted behind it.
-std::string positionLine(LookInfo const& info, bool showPosition, bool showDistance) {
+// Line 3: x, y, z and the distance, each in its own configured colour.
+std::string positionLine(LookInfo const& info, bool showPosition, bool showDistance, ColorOptions const& colors) {
     std::string line;
     if (showPosition) {
-        line = std::to_string(info.x) + ", " + std::to_string(info.y) + ", " + std::to_string(info.z);
+        line = colored(colors.x, std::to_string(info.x)) + ", " + colored(colors.y, std::to_string(info.y)) + ", "
+             + colored(colors.z, std::to_string(info.z));
     }
     if (showDistance) {
         auto const distance = util::trimNumber(info.distance, 1);
@@ -125,7 +148,7 @@ std::string positionLine(LookInfo const& info, bool showPosition, bool showDista
             if (!line.empty()) {
                 line += ' ';
             }
-            line += " §7[" + distance + "]";
+            line += colored(colors.distance, "[" + distance + "]");
         }
     }
     return line;
@@ -158,16 +181,17 @@ std::string joinLines(std::vector<std::string> const& lines) {
 // and light emission, then the per-block-type extras.
 std::string renderBlockText(Config const& cfg, LookInfo const& info, std::string const& localeCode) {
     auto const&              d = cfg.display;
+    auto const&              c = cfg.colors;
     std::vector<std::string> lines;
 
-    pushLine(lines, nameLine(info.blockName, info.direction, d.name, d.facing));
-    pushLine(lines, idLine(info.blockType, info.blockKey, d.identifier, d.translationKey));
-    pushLine(lines, positionLine(info, d.position, d.distance));
+    pushLine(lines, nameLine(info.blockName, info.direction, d.name, d.facing, c));
+    pushLine(lines, idLine(info.blockType, info.blockKey, d.identifier, d.translationKey, c));
+    pushLine(lines, positionLine(info, d.position, d.distance, c));
     pushLine(
         lines,
         joined({
-            d.light ? labelled(localeCode, "Light", info.light) : std::string{},
-            d.emission ? labelled(localeCode, "Emission", info.emission) : std::string{},
+            d.light ? labelled(localeCode, "Light", info.light, c) : std::string{},
+            d.emission ? labelled(localeCode, "Emission", info.emission, c) : std::string{},
         })
     );
     appendExtras(lines, info.extras, d.extras);
@@ -179,17 +203,23 @@ std::string renderBlockText(Config const& cfg, LookInfo const& info, std::string
 // describe a position in the world, not the entity under the crosshair.
 std::string renderEntityText(Config const& cfg, LookInfo const& info, std::string const& localeCode) {
     auto const&              e = cfg.entity;
+    auto const&              c = cfg.colors;
     std::vector<std::string> lines;
 
-    pushLine(lines, nameLine(info.entityName, info.direction, e.name, e.facing));
-    pushLine(lines, idLine(info.entityType, info.entityKey, e.identifier, e.translationKey));
-    pushLine(lines, positionLine(info, e.position, e.distance));
+    pushLine(lines, nameLine(info.entityName, info.direction, e.name, e.facing, c));
+    pushLine(lines, idLine(info.entityType, info.entityKey, e.identifier, e.translationKey, c));
+    pushLine(lines, positionLine(info, e.position, e.distance, c));
 
+    // Hit points have their own colour (colors.health) instead of the generic
+    // value colour: they are the one line most people want to stand out.
     std::string health;
     if (e.health && info.hasHealth) {
-        health = healthText(info.health, info.maxHealth);
+        health = colored(c.health, healthText(info.health, info.maxHealth));
+        if (!health.empty()) {
+            health = colored(c.label, tr(localeCode, "Health")) + " " + health;
+        }
     }
-    pushLine(lines, labelled(localeCode, "Health", health));
+    pushLine(lines, health);
 
     appendExtras(lines, info.extras, e.extras);
     return joinLines(lines);

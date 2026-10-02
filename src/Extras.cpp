@@ -52,6 +52,7 @@
 
 #include "ll/api/io/Logger.h"
 
+#include "Colors.h"
 #include "I18n.h"
 #include "Insight.h"
 #include "Translation.h"
@@ -150,12 +151,21 @@ std::optional<bool> readStateBool(IConstBlockSource const& region, BlockPos cons
     return std::nullopt;
 }
 
+// Every "label value" line in this file is coloured from the same two slots the
+// built-in lines use (config `colors.label` / `colors.value`), so one colour
+// scheme covers the whole panel - the extras included.
+std::string labelText(std::string const& langCode, char const* labelKey) {
+    return colored(Insight::cfg().colors.label, tr(langCode, labelKey));
+}
+
+std::string valueText(std::string const& text) { return colored(Insight::cfg().colors.value, text); }
+
 std::string valueLine(std::string const& langCode, char const* labelKey, int value) {
-    return std::string("§7") + tr(langCode, labelKey) + " §f" + std::to_string(value);
+    return labelText(langCode, labelKey) + " " + valueText(std::to_string(value));
 }
 
 std::string textLine(std::string const& langCode, char const* labelKey, std::string const& value) {
-    return std::string("§7") + tr(langCode, labelKey) + " §f" + value;
+    return labelText(langCode, labelKey) + " " + valueText(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -318,15 +328,15 @@ std::string itemListLine(Container const& container, std::string const& langCode
             continue;
         }
         if (shown == 4) {
-            out += " §8...";
+            out += " " + colored(Insight::cfg().colors.label, "...");
             break;
         }
         if (!out.empty()) {
-            out += "§7, ";
+            out += colored(Insight::cfg().colors.label, ", ");
         }
-        out += "§f" + localizeKey(langCode, stack.getDescriptionId());
+        out += valueText(localizeKey(langCode, stack.getDescriptionId()));
         if (stack.mCount > 1) {
-            out += "§7x" + std::to_string(stack.mCount);
+            out += valueText("x" + std::to_string(stack.mCount));
         }
         ++shown;
     }
@@ -384,9 +394,9 @@ std::string chestLine(BlockActor const* be, BlockPos const& pos, std::string con
         );
     }
 
-    std::string s = "§7" + tr(langCode, "Items") + " §f" + std::to_string(filled) + "/" + std::to_string(size);
+    std::string s = labelText(langCode, "Items") + " " + valueText(std::to_string(filled) + "/" + std::to_string(size));
     if (total > 0) {
-        s += " §7· §f" + std::to_string(total);
+        s += " " + colored(Insight::cfg().colors.label, "·") + " " + valueText(std::to_string(total));
     }
     return s;
 }
@@ -421,7 +431,7 @@ std::string machineLine(BlockActor const* be, BlockPos const& pos, std::string c
             filled = snap.filled;
         }
     }
-    return "§7" + tr(langCode, "Slots") + " §f" + std::to_string(filled) + "/" + std::to_string(size);
+    return labelText(langCode, "Slots") + " " + valueText(std::to_string(filled) + "/" + std::to_string(size));
 }
 
 // First non-empty slot of a container as a localized item name ("" if empty).
@@ -557,10 +567,10 @@ void miscStateLines(
 
     // ---- numeric states --------------------------------------------------
     if (auto v = readStateInt(region, pos, "composter_fill_level")) {
-        lines.push_back("§7" + tr(langCode, "Compost") + " §f" + std::to_string(*v) + "/8");
+        lines.push_back(textLine(langCode, "Compost", std::to_string(*v) + "/8"));
     }
     if (auto v = readStateInt(region, pos, "bite_counter")) { // cake
-        lines.push_back("§7" + tr(langCode, "Slices") + " §f" + std::to_string(7 - *v) + "/7");
+        lines.push_back(textLine(langCode, "Slices", std::to_string(7 - *v) + "/7"));
     }
     // TODO(26.40 + LeviLamina): the note block gives us nothing to read. Verified
     // in-game for minecraft:noteblock: BlockType::mStateNameMap is empty, mStates is
@@ -1017,7 +1027,7 @@ void blockActorLines(
     if (opt.bookshelf && be->getType() == BlockActorType::ChiseledBookshelf) {
         if (auto* container = containerOf(be)) {
             if (auto list = itemListLine(*container, langCode); !list.empty()) {
-                lines.push_back("§7" + tr(langCode, "Bookshelf") + " " + list);
+                lines.push_back(labelText(langCode, "Bookshelf") + " " + list);
             }
         }
         return;
@@ -1033,7 +1043,7 @@ void blockActorLines(
         }
         lines.push_back(valueLine(langCode, "Items", used) + "/3");
         if (auto list = itemListLine(*containerOf(be), langCode); !list.empty()) {
-            lines.push_back("§7" + tr(langCode, "Shelf") + " " + list);
+            lines.push_back(labelText(langCode, "Shelf") + " " + list);
         }
         return;
     }
@@ -1058,14 +1068,17 @@ void blockActorLines(
             for (char const ch : sign->getMessage(side == 0 ? SignTextSide::Front : SignTextSide::Back)) {
                 if (ch == '\n' || ch == '\r') {
                     if (!text.empty()) {
-                        text += " §8| §f";
+                        // separator plus the colour the following line's text goes back
+                        // to, since the sign's text is one run per side
+                        text += " " + colored(Insight::cfg().colors.label, "|") + " "
+                              + colorPrefix(Insight::cfg().colors.value);
                     }
                 } else {
                     text += ch;
                 }
             }
             if (!text.empty()) {
-                lines.push_back("§7" + tr(langCode, side == 0 ? "Text" : "Text (back)") + " §f" + text);
+                lines.push_back(labelText(langCode, side == 0 ? "Text" : "Text (back)") + " " + valueText(text));
             }
         }
         return;
@@ -1315,7 +1328,9 @@ std::string buildBlockExtras(
             if (auto* c = containerOf(be); c && c->getContainerSize() > 0) {
                 auto const& item = c->getItem(0);
                 if (item.isNull()) {
-                    lines.push_back("§7" + tr(langCode, "Record") + " §8-");
+                    lines.push_back(
+                        labelText(langCode, "Record") + " " + colored(Insight::cfg().colors.label, "-")
+                    );
                 } else {
                     // The engine carries one localization key per disc
                     // (item.record_<variant>.desc), so the disc's own name comes
@@ -1381,7 +1396,7 @@ std::string buildBlockExtras(
                             + " idAux=" + std::to_string(item.getIdAux()) + " aux=" + std::to_string(item.getAuxValue())
                             + " shown=" + name
                     );
-                    lines.push_back("§7" + tr(langCode, "Record") + " §f" + name);
+                    lines.push_back(textLine(langCode, "Record", name));
                 }
             }
         } else if (opt.flowerPot && be && be->getType() == BlockActorType::FlowerPot) {
@@ -1389,16 +1404,14 @@ std::string buildBlockExtras(
             // 26.40: getPlantItem() was replaced by the mPlant member.
             auto const* plant = static_cast<Block const*>(fp->mPlant);
             if (plant) {
-                lines.push_back("§7" + tr(langCode, "Pot") + " §f" + localizeKey(langCode, plant->getDescriptionId()));
+                lines.push_back(textLine(langCode, "Pot", localizeKey(langCode, plant->getDescriptionId())));
             }
         } else if (opt.flowerPot && isPottedBlock(region, pos)) {
             // Modern versions encode the plant in the block itself. Bedrock
             // exposes no flag for "this block is a potted plant", so the block's
             // own display name (which is where the plant lives) is used - the
             // engine data, without parsing the id.
-            lines.push_back(
-                "§7" + tr(langCode, "Pot") + " §f" + localizeKey(langCode, region.getBlock(pos).getDescriptionId())
-            );
+            lines.push_back(textLine(langCode, "Pot", localizeKey(langCode, region.getBlock(pos).getDescriptionId())));
         }
     }
 
@@ -1462,9 +1475,10 @@ std::string buildEntityExtras(
             }
         }
         if (size > 0) {
-            std::string s = "§7" + tr(langCode, "Items") + " §f" + std::to_string(filled) + "/" + std::to_string(size);
+            std::string s =
+                labelText(langCode, "Items") + " " + valueText(std::to_string(filled) + "/" + std::to_string(size));
             if (total > 0) {
-                s += " §7· §f" + std::to_string(total);
+                s += " " + colored(Insight::cfg().colors.label, "·") + " " + valueText(std::to_string(total));
             }
             lines.push_back(s);
         }
@@ -1478,7 +1492,7 @@ std::string buildEntityExtras(
         if (painting->mMotif) {
             auto const& name = *painting->mMotif->mName;
             if (!name.empty()) {
-                lines.push_back("§7" + tr(langCode, "Painting") + " §f" + name);
+                lines.push_back(textLine(langCode, "Painting", name));
             }
         }
     }

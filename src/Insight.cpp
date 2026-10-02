@@ -12,6 +12,7 @@
 #include "ll/api/data/KeyValueDB.h"
 #endif
 
+#include "Colors.h"
 #include "I18n.h"
 #include "Util.h"
 
@@ -396,6 +397,17 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
         target = static_cast<int>(v);
         return finish({true, tr(localeCode, "set {0} = {1}", name, std::to_string(v))});
     };
+    // A colour is stored as the bare formatting code ("c"), but accepted in the
+    // shapes a player is likely to type: "c", "§c", "&c", "#c", or "none" to go
+    // back to the client's plain text colour.
+    auto setColor = [&](std::string& target, char const* name) -> ConfigEditResult {
+        auto code = normalizeColorCode(value);
+        if (!code) {
+            return {false, tr(localeCode, "Invalid colour code: {0} (0-9, a-f, or none)", value)};
+        }
+        target = *code;
+        return finish({true, tr(localeCode, "set {0} = {1}", name, target.empty() ? "none" : target)});
+    };
 
     // --- top-level options -----------------------------------------------
     if (lower == "enabled") {
@@ -473,6 +485,33 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
              }) {
             if (lower == util::toLower(entry.name)) {
                 return setBool(*entry.target, entry.name);
+            }
+        }
+    }
+
+    // --- colours: one entry per piece of the panel (ColorOptions). Both panels
+    // and the extras lines read from here, so these names are what the colour
+    // scheme is configured with. ---
+    {
+        struct ColorSwitch {
+            char const*  name;
+            std::string* target;
+        };
+        for (auto const& entry : {
+                 ColorSwitch{"colors.name",           &gConfig.colors.name          },
+                 ColorSwitch{"colors.facing",         &gConfig.colors.facing        },
+                 ColorSwitch{"colors.identifier",     &gConfig.colors.identifier    },
+                 ColorSwitch{"colors.translationKey", &gConfig.colors.translationKey},
+                 ColorSwitch{"colors.x",              &gConfig.colors.x             },
+                 ColorSwitch{"colors.y",              &gConfig.colors.y             },
+                 ColorSwitch{"colors.z",              &gConfig.colors.z             },
+                 ColorSwitch{"colors.distance",       &gConfig.colors.distance      },
+                 ColorSwitch{"colors.label",          &gConfig.colors.label         },
+                 ColorSwitch{"colors.value",          &gConfig.colors.value         },
+                 ColorSwitch{"colors.health",         &gConfig.colors.health        },
+             }) {
+            if (lower == util::toLower(entry.name)) {
+                return setColor(*entry.target, entry.name);
             }
         }
     }

@@ -13,6 +13,7 @@
 
 #include <imgui.h>
 
+#include "Colors.h"
 #include "Config.h"
 #include "I18n.h"
 #include "ImGuiOverlay.h"
@@ -299,8 +300,58 @@ bool const* findBoolOption(std::string const& option) {
     return nullptr;
 }
 
+// Every colour option in one table, for the same reason the switches have one: a
+// row whose value cannot be read shows a colour that is not the configured one.
+std::string const* findColorOption(std::string const& option) {
+    auto const& cfg = Insight::cfg();
+    struct Entry {
+        std::string_view    name;
+        std::string const*  value;
+    };
+    static Entry const table[] = {
+        {"colors.name",           &cfg.colors.name          },
+        {"colors.facing",         &cfg.colors.facing        },
+        {"colors.identifier",     &cfg.colors.identifier    },
+        {"colors.translationKey", &cfg.colors.translationKey},
+        {"colors.x",              &cfg.colors.x             },
+        {"colors.y",              &cfg.colors.y             },
+        {"colors.z",              &cfg.colors.z             },
+        {"colors.distance",       &cfg.colors.distance      },
+        {"colors.label",          &cfg.colors.label         },
+        {"colors.value",          &cfg.colors.value         },
+        {"colors.health",         &cfg.colors.health        },
+    };
+    for (auto const& entry : table) {
+        if (option == entry.name) {
+            return entry.value;
+        }
+    }
+    return nullptr;
+}
+
+// The colours a piece of the panel can be given: "no code" first, then every code
+// Bedrock resolves to a colour (the 0-9/a-f set plus the material colours only
+// Bedrock has).
+std::vector<std::string> const& colorChoices() {
+    static std::vector<std::string> const choices = [] {
+        std::vector<std::string> out;
+        out.emplace_back();
+        for (char const code : colorCodeChoices()) {
+            out.emplace_back(1, code);
+        }
+        return out;
+    }();
+    return choices;
+}
+
 std::string currentValueText(Row const& row, std::string const& locale) {
     auto const& cfg = Insight::cfg();
+
+    // colours first: they are plain strings and would otherwise fall through to
+    // the empty return below, which reads as "no colour" for every row
+    if (auto const* value = findColorOption(row.option)) {
+        return *value;
+    }
 
     if (row.kind == Kind::Bool) {
         // table first, so a switch that was added later still reports its state
@@ -450,6 +501,61 @@ std::string choiceLabel(std::string const& value, std::string const& locale) {
         }
     }
     return value;
+}
+
+// The colour rows store a single formatting code, so their value ("c") is shown
+// as the colour's name. This deliberately lives apart from choiceLabel(): that one
+// is used for every row's value column, and mapping bare "1"/"c" there renamed
+// ordinary numbers - a font size of 1 came out as "Dark blue".
+std::string colorLabel(std::string const& value, std::string const& locale) {
+    static constexpr std::pair<char const*, char const*> kColorNames[] = {
+        {"",  "None"          },
+        {"0", "Black"         },
+        {"1", "Dark blue"     },
+        {"2", "Dark green"    },
+        {"3", "Dark aqua"     },
+        {"4", "Dark red"      },
+        {"5", "Dark purple"   },
+        {"6", "Gold"          },
+        {"7", "Gray"          },
+        {"8", "Dark gray"     },
+        {"9", "Blue"          },
+        {"a", "Green"         },
+        {"b", "Aqua"          },
+        {"c", "Red"           },
+        {"d", "Light purple"  },
+        {"e", "Yellow"        },
+        {"f", "White"         },
+        {"g", "Minecoin gold" },
+        {"h", "Quartz"        },
+        {"i", "Iron"          },
+        {"j", "Netherite"     },
+        {"m", "Redstone"      },
+        {"n", "Copper"        },
+        {"p", "Gold ingot"    },
+        {"q", "Emerald"       },
+        {"s", "Diamond"       },
+        {"t", "Lapis"         },
+        {"u", "Amethyst"      },
+        {"v", "Resin"         },
+        {"w", "Party blue"    },
+    };
+    for (auto const& [code, key] : kColorNames) {
+        if (value == code) {
+            return tr(locale, key);
+        }
+    }
+    return value;
+}
+
+// Is this the option name of a colour row? Only those resolve a value to a colour
+// name - see colorLabel().
+bool isColorRow(std::string const& option) { return option.rfind("colors.", 0) == 0; }
+
+// How one row's value is written out: colour names for the colour rows, the fixed
+// token names for the other choices, the value itself otherwise.
+std::string valueLabel(Row const& row, std::string const& value, std::string const& locale) {
+    return isColorRow(row.option) ? colorLabel(value, locale) : choiceLabel(value, locale);
 }
 
 bool rowIsOn(Row const& row, std::string const& locale) { return currentValueText(row, locale) == tr(locale, "On"); }
@@ -763,9 +869,9 @@ void ConfigUi::draw() {
         }
         case Kind::Enum: {
             std::string const current = currentValueText(row, locale);
-            if (ImGui::BeginCombo("##value", choiceLabel(current, locale).c_str())) {
+            if (ImGui::BeginCombo("##value", valueLabel(row, current, locale).c_str())) {
                 for (auto const& choice : row.choices) {
-                    if (ImGui::Selectable(choiceLabel(choice, locale).c_str(), choice == current)) {
+                    if (ImGui::Selectable(valueLabel(row, choice, locale).c_str(), choice == current)) {
                         queueEdit(row.option, choice); // the config keeps the token
                     }
                 }
@@ -816,7 +922,7 @@ void ConfigUi::draw() {
             if (rowHeader(
                     row.option.c_str(),
                     tr(locale, row.label),
-                    choiceLabel(currentValueText(row, locale), locale),
+                    valueLabel(row, currentValueText(row, locale), locale),
                     open
                 )) {
                 mOpenRow = open ? std::string{} : row.option;
@@ -1101,6 +1207,25 @@ void ConfigUi::draw() {
               "bottom_right"}                                   },
     },
         1000
+    );
+
+    ImGui::Spacing();
+    drawSection(
+        "Colours",
+        {
+            {"Name colour",            "colors.name",           Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Facing colour",          "colors.facing",         Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Type id colour",         "colors.identifier",     Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Translation key colour", "colors.translationKey", Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"X colour",               "colors.x",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Y colour",               "colors.y",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Z colour",               "colors.z",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Distance colour",        "colors.distance",       Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Label colour",           "colors.label",          Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Value colour",           "colors.value",          Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            {"Health colour",          "colors.health",         Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+    },
+        1100
     );
 
     ImGui::EndChild();

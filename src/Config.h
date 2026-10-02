@@ -159,6 +159,31 @@ struct EntityOptions {
                         // place, the adapters themselves come later
 };
 
+// Colours of the individual pieces of the panel, one vanilla formatting code per
+// piece: a single letter out of "0"-"9" / "a"-"f" (or empty for "leave it in the
+// client's plain text colour"). The "§" is not part of the value - what is stored
+// is exactly the letter a player types after it - so a scheme can be read and
+// edited in the config file without escape characters.
+//
+// These apply to both the block and the entity panel, and to the extras lines as
+// well: every "label value" line a block or entity adapter produces uses `label`
+// and `value`. The defaults only spell out the colours the coordinates are
+// usually drawn in; anything else keeps the grey/white the panel has always used,
+// so a colour scheme is opt-in.
+struct ColorOptions {
+    std::string name           = "f"; // the target's name on the first line
+    std::string facing         = "7"; // "(north)" behind the name
+    std::string identifier     = "7"; // the type id on the second line
+    std::string translationKey = "7"; // "(tile.stone.stone)" behind the type id
+    std::string x              = "c"; // position: x (red)
+    std::string y              = "a"; // position: y (green)
+    std::string z              = "b"; // position: z (aqua)
+    std::string distance       = "7"; // "[12.3]" behind the position
+    std::string label          = "7"; // "label value" lines: the label
+    std::string value          = "f"; // "label value" lines: the value
+    std::string health         = "c"; // the entity's hit points
+};
+
 // Per-block extra info adapters. Every adapter has its own switch, so a line a
 // player does not care about can be silenced without losing the others;
 // `enabled` gates all of them. Data availability differs by platform: containers
@@ -212,7 +237,8 @@ struct Config {
     // its own switch (BlockExtrasConfig). 3 -> 4: client.transitionTime (panel
     // fade). 4 -> 5: removed format / entityFormat / the per-block-type format
     // overrides in favour of the per-field switches in DisplayOptions (display.*).
-    int version = 5;
+    // 5 -> 6: the per-field colours (ColorOptions, `colors`).
+    int version = 6;
 
     // Master switch for the whole mod.
     bool enabled = true;
@@ -245,6 +271,10 @@ struct Config {
     // the player configures instead of the old text templates.
     DisplayOptions display;
     EntityOptions  entity;
+
+    // Colour of every piece of the panel (see ColorOptions). Both panels and the
+    // extras lines use it, so one scheme covers the whole display.
+    ColorOptions colors;
 
     // Per-block-type extra info (see BlockExtrasConfig).
     BlockExtrasConfig extras;

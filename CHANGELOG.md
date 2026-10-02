@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      file (ffurrer2/extract-release-notes), so the version heading below has to
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
+## [Unreleased]
+
+### Added
+
+- Every part of the panel has a colour of its own. The `colors` group has one entry per part - `name`,
+  `facing`, `identifier`, `translationKey`, `x`, `y`, `z`, `distance`, `label`, `value` and `health` -
+  and each is a vanilla formatting code **without the `§`**: `"c"` means `§c`, and an empty value
+  (or `none` / `off` / `default`) leaves that part in the plain text colour, `client.textColor`. Both
+  panels and the extras lines read from the same group - a labelled line such as a chest's
+  `Items 12/27` uses `colors.label` for its label and `colors.value` for its value - so one scheme
+  covers the whole display. The defaults only spell out the colours the coordinates are usually drawn
+  in (`x` red, `y` green, `z` aqua) plus red hit points; every other part keeps the grey/white the
+  panel has always used, so a colour scheme stays opt-in.
+- The accepted codes are the Bedrock set, which is larger than Java's sixteen: `g` minecoin gold,
+  `h` quartz, `i` iron, `j` netherite, `m` redstone, `n` copper, `p` gold, `q` emerald, `s` diamond,
+  `t` lapis, `u` amethyst, `v` resin and `w` party blue, next to the sixteen `0`-`9` / `a`-`f`. The
+  formatting codes (`k`, `l`, `o`, `r`) are rejected - one of those on a line would change how the
+  rest of the panel is drawn.
+- The configuration screen has a **Colours** group with one dropdown per part, each option shown as
+  the colour's name (Red, Dark aqua, Minecoin gold, ...) rather than its code.
+  `/insight set <colors.*> <code>` takes the bare code or the `§c` / `&c` / `#c` spellings, and
+  `none` clears the colour again.
+
+### Changed
+
+- Higher `Config` schema version (6) for the `colors` group; an existing file is merged
+  automatically and keeps every value it already has.
+
 ## [0.3.1] - 2026-10-02
 
 ### Fixed

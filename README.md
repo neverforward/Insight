@@ -83,7 +83,7 @@ The client can also edit the configuration in a screen instead of the chat:
 
 ```jsonc
 {
-    "version": 5,                  // schema version; older files are merged automatically, and the
+    "version": 6,                  // schema version; older files are merged automatically, and the
                                    // templates of a version <= 4 file become display / entity
                                    // switches (see below)
 
@@ -117,6 +117,23 @@ The client can also edit the configuration in a screen instead of the chat:
         "distance": false,             // position line: distance to the entity in blocks
         "health": true,                // state line: current/max hit points; hidden for entities without health (items, projectiles, paintings)
         "extras": true                 // per-entity extra lines (the same extras.* adapters as the block side, gated by extras.enabled too)
+    },
+
+    "colors": {                    // colour of every part of the panel: one formatting code per part,
+                                   // without the "§" ("c" = §c). "" (or none / off / default) leaves
+                                   // that part in the plain text colour. Both panels and the extras
+                                   // lines use these, so one scheme covers the whole display.
+        "name": "f",               // the target's name
+        "facing": "7",             // the facing in brackets after the name
+        "identifier": "7",         // the type id line
+        "translationKey": "7",     // the translation key in brackets after the type id
+        "x": "c",                  // position: x (red)
+        "y": "a",                  // position: y (green)
+        "z": "b",                  // position: z (aqua)
+        "distance": "7",           // the distance in brackets behind the position
+        "label": "7",              // "label value" lines: the label
+        "value": "f",              // "label value" lines: the value
+        "health": "c"              // the entity's hit points
     },
 
     "extras": {                    // extras adapters, shared by the block and the entity panel (shown while display.extras / entity.extras is on)
@@ -212,6 +229,34 @@ choose what an entity panel contains once one is targeted.
 | `entity.distance` | `false` | distance to the entity in blocks, behind the position |
 | `entity.health` | `true` | hit points as `current/max`, e.g. `§7Health §f12/20`; hidden for entities without health (items, projectiles, paintings) |
 | `entity.extras` | `true` | the per-entity extra lines (container entities such as chest / hopper minecarts and boats with chest, paintings, worn equipment); the same `extras.*` adapters as the block side, gated by `extras.enabled` too |
+
+### colours
+
+Every part of the panel has its own colour, taken from the `colors` block above. A value is a
+**formatting code without the `§`** - exactly the character a player would type after it - so `"c"`
+means `§c`. An empty string (or `none` / `off` / `default`) leaves that part in the plain text
+colour, which is `client.textColor`.
+
+The codes are the usual sixteen, plus the ones only Bedrock has:
+
+| Code | Colour | Code | Colour | Code | Colour | Code | Colour |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `0` | black | `4` | dark red | `8` | dark gray | `c` | red |
+| `1` | dark blue | `5` | dark purple | `9` | blue | `d` | light purple |
+| `2` | dark green | `6` | gold | `a` | green | `e` | yellow |
+| `3` | dark aqua | `7` | gray | `b` | aqua | `f` | white |
+
+| Code | Bedrock colour | Code | Bedrock colour | Code | Bedrock colour |
+| --- | --- | --- | --- | --- | --- |
+| `g` | minecoin gold | `n` | copper | `t` | lapis |
+| `h` | quartz | `p` | gold ingot | `u` | amethyst |
+| `i` | iron | `q` | emerald | `v` | resin |
+| `j` | netherite | `s` | diamond | `w` | party blue |
+| `m` | redstone | | | | |
+
+`colors.label` and `colors.value` are what the labelled lines use, so they cover the extras lines
+too: a chest's `Items 12/27` is a label plus a value, not a separate setting. The codes shown
+throughout this file (`§7`, `§f`, ...) are the defaults.
 
 The lines those switches produce, in order. A block panel:
 
