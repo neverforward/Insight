@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      file (ffurrer2/extract-release-notes), so the version heading below has to
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
+## [0.3.1] - 2026-10-02
+
+### Fixed
+
+- The README says **LeviLamina 26.51.\*** on both sides now, which is what `tooth.json` declares and
+  what the mod is built against; 0.3.0 already required 26.51 in `tooth.json` while its README still
+  said 26.40.
+
 ## [0.3.0] - 2026-10-01
 
 ### Added
@@ -44,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Requires **LeviLamina 26.51.\*** (Bedrock 26.51) on both sides: the client variant wants the
+  LeviLamina client build (`#client`), the server variant the plain one, and both are built against
+  26.51 now, so a 0.2.0 install on 26.40 has to update LeviLamina first.
 - Higher `Config` schema version (5) for the separate `display` / `entity` switch groups, the removal
   of the templates and the new `client.transitionTime` option; existing files are merged
   automatically, and a file below version 5 has its old templates migrated into switches first.
@@ -271,7 +282,8 @@ First release: the mod template has been turned into the actual mod.
 
 - The mod template leftovers (`src/mod/MyMod.*`).
 
-[Unreleased]: https://github.com/neverforward/Insight/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/neverforward/Insight/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/neverforward/Insight/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/neverforward/Insight/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/neverforward/Insight/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/neverforward/Insight/compare/v0.0.3...v0.1.0
