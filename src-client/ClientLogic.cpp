@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <cmath>
+#include <mutex>
+#include <set>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -18,6 +22,7 @@
 #include "mc/client/player/LocalPlayer.h"
 #include "mc/client/renderer/screen/MinecraftUIRenderContext.h"
 #include "mc/client/gui/FontRepository.h"
+#include "mc/client/gui/screens/ScreenView.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
 // Needed by drawPanelNative: the game object behind getMinecraftGame_DEPRECATED() and the
 // result type of the UI's text measurement. Added after the line above rather than before it,
@@ -60,13 +65,79 @@
 #include "Util.h"
 
 #include "ll/api/event/command/ClientCommandRegisterEvent.h"
+#include "ll/api/event/client/ClientExitLevelEvent.h"
 #include "ll/api/event/input/KeyInputEvent.h"
 #include "ll/api/event/input/MouseInputEvent.h"
 #include "ll/api/input/KeyRegistry.h"
+#include "ll/api/memory/Hook.h"
 
 namespace insight {
 
 namespace {
+
+// ---------------------------------------------------------------------------
+// Hotkey context. The configured keys open/close the configuration screen and
+// flip the panel, and a key event says nothing about where it came from: without
+// a context check the keys fired while the player was typing in chat and even in
+// the main menu. Two things decide whether a key may act as a hotkey:
+//
+//  1. the game is actually playing - the hud_screen owns the input. The UI render
+//     pass reports that per screen (mHasFocus), so the context is published from
+//     there into gHotkeyContext and read here. Cached rather than queried because
+//     the key events arrive from the window procedure, not from the UI pass.
+//  2. no text box is being typed into. Chat, an anvil name, a sign, the creative
+//     search field: the game tells us when one of them gains or loses the typing
+//     state (ScreenView::_fireSelectedStateChangeEvent), which is the only
+//     reliable signal for it - screens keep their input focus while a text box of
+//     theirs is selected.
+//
+// Both are published as atomics: the hook runs on the game thread with the UI pass
+// while the key handler may run on another one.
+std::atomic<bool> gHotkeyContext{false};
+
+// Selected text boxes, keyed by (screen, component) so that a repeated event can
+// never leave the set - and therefore the hotkeys - stuck.
+std::mutex                                    gTextEditMutex;
+std::set<std::pair<void const*, void const*>> gTextEditSelected;
+
+void setTextEditSelected(void const* view, void const* component, bool selected) {
+    std::lock_guard lock(gTextEditMutex);
+    if (selected) {
+        gTextEditSelected.emplace(view, component);
+    } else {
+        gTextEditSelected.erase({view, component});
+    }
+}
+
+bool anyTextEditSelected() {
+    std::lock_guard lock(gTextEditMutex);
+    return !gTextEditSelected.empty();
+}
+
+void clearTextEditSelected() {
+    std::lock_guard lock(gTextEditMutex);
+    gTextEditSelected.clear();
+}
+
+// The hook macro always declares the counter its auto-registering variants use for
+// reference counting; this hook registers by hand (enable/disable), so it is left
+// unused and /W4 says so. Suppressed here rather than referenced, because touching it
+// would only be there to please the compiler.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable"
+LL_TYPE_INSTANCE_HOOK(
+    InsightTextEditHook,
+    ll::memory::HookPriority::Normal,
+    ScreenView,
+    &ScreenView::_fireSelectedStateChangeEvent,
+    void,
+    ::TextEditComponent const& textEditComponent,
+    bool                       state
+) {
+    setTextEditSelected(this, &textEditComponent, state);
+    origin(textEditComponent, state);
+}
+#pragma clang diagnostic pop
 
 // parse "rrggbb" hex into rgb components 0..1
 bool parseHexColor(std::string const& hex, float& r, float& g, float& b) {
@@ -516,20 +587,30 @@ bool ClientLogic::enable() {
         [&openKey, &showKey](ll::event::input::KeyInputEvent& event) {
             auto& ui = ConfigUi::instance();
             if (event.isDown()) {
-                int const code = event.keyCode();
-                for (int bound : openKey.getKeyCodes()) {
-                    if (bound != 0 && bound == code) {
-                        ui.toggle();
-                        event.cancel();
-                        return;
+                // A hotkey may only fire where it cannot steal a key somebody else needs
+                // (see the hotkey context at the top of this file): during gameplay while
+                // no text box is being typed into - be it the chat, an anvil name or a
+                // sign - and, while the configuration screen is up, only when that screen
+                // is not itself waiting for a key or editing a field.
+                bool const allowed = ui.visible() ? !ui.wantsKeyboard()
+                                                  : (gHotkeyContext.load(std::memory_order_relaxed)
+                                                     && !anyTextEditSelected());
+                if (allowed) {
+                    int const code = event.keyCode();
+                    for (int bound : openKey.getKeyCodes()) {
+                        if (bound != 0 && bound == code) {
+                            ui.toggle();
+                            event.cancel();
+                            return;
+                        }
                     }
-                }
-                for (int bound : showKey.getKeyCodes()) {
-                    if (bound != 0 && bound == code) {
-                        auto const& cfg = Insight::cfg();
-                        (void)Insight::applyConfigEdit("showOverlay", cfg.client.showOverlay ? "false" : "true", {});
-                        event.cancel();
-                        return;
+                    for (int bound : showKey.getKeyCodes()) {
+                        if (bound != 0 && bound == code) {
+                            auto const& cfg = Insight::cfg();
+                            (void)Insight::applyConfigEdit("showOverlay", cfg.client.showOverlay ? "false" : "true", {});
+                            event.cancel();
+                            return;
+                        }
                     }
                 }
             }
@@ -558,6 +639,19 @@ bool ClientLogic::enable() {
         logger.warn("ImGui overlay hooks not installed yet; retrying on next reload");
     }
 
+    // Typing detection for the hotkeys (see the hotkey context at the top of this
+    // file). Without the hook the keys would still fire, but a text box would lose
+    // them, so a failure to install is only a warning.
+    if (InsightTextEditHook::hook(true) != 0) {
+        logger.warn("text edit focus hook not installed; the hotkeys may fire while typing");
+    }
+    mListeners.emplace_back(bus.emplaceListener<ll::event::client::ClientExitLevelEvent>([](auto&) {
+        // Leaving the world drops every screen: any text box that was still selected
+        // would keep the hotkeys quiet forever.
+        clearTextEditSelected();
+        gHotkeyContext = false;
+    }));
+
     logger.info("Client mode enabled (GDK). overlay={}", Insight::cfg().client.showOverlay);
     return true;
 }
@@ -568,6 +662,9 @@ void ClientLogic::disable() {
         bus.removeListener(l);
     }
     mListeners.clear();
+    InsightTextEditHook::unhook(true);
+    clearTextEditSelected();
+    gHotkeyContext = false;
     mVisible = false;
     mText.clear();
     mOverlay.shutdown();
@@ -655,6 +752,24 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
         ui.setLocale(lang);
         ui.setPreviewText(mText);
     }
+    // Hotkey context (see the top of this file). Published before the panel's own
+    // switches are read: the key that turns the panel back on has to work while it is
+    // off, and a menu has to swallow the keys either way. Only the screen that owns the
+    // input counts - the screens behind an open menu render every frame but report no
+    // focus, which is exactly what makes them "not gameplay".
+    std::string screen;
+    try {
+        screen = event.screenView().getScreenName();
+    } catch (...) {
+        screen.clear();
+    }
+    bool const hudLike = screen.empty() || screen == "hud_screen" || screen.find("hud") != std::string::npos;
+    if (screen != "toast_screen" && screen != "debug_screen") {
+        // The toast/debug layers are transparent overlays on top of the HUD: they must
+        // not decide anything, or they would clear the context every frame.
+        gHotkeyContext = hudLike && event.screenView().mHasFocus;
+    }
+
     if (!cfg.enabled || !cfg.client.showOverlay) {
         mVisible = false;
         pushOverlay();
@@ -669,6 +784,7 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
     if (!localPlayer || !client.getLevel()) {
         mVisible          = false; // in a menu / loading / outside any level
         mRefreshRequested = true;
+        gHotkeyContext    = false;
         pushOverlay();
         return;
     }
@@ -682,13 +798,6 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
     // gameplay, and letting them clear the visibility state here made the
     // overlay vanish right after each sample (it only came back on the next
     // sampling frame -> one flash per refresh).
-    std::string screen;
-    try {
-        screen = event.screenView().getScreenName();
-    } catch (...) {
-        screen.clear();
-    }
-    bool hudLike = screen.empty() || screen == "hud_screen" || screen.find("hud") != std::string::npos;
 
     // Transparent HUD overlays that are always present during gameplay:
     // ignore them completely (never touch visibility state).

@@ -47,6 +47,14 @@ public:
     /// other event comes from ImGui's Win32 backend.
     void onKey(int vkCode, bool down);
 
+    /// True while the keyboard belongs to this screen rather than to a hotkey: a
+    /// rebind capture is waiting for a key, or one of its text fields has the caret.
+    /// Read from the game thread before a hotkey is allowed to fire, so typing into
+    /// the screen's own fields cannot close it by accident.
+    [[nodiscard]] bool wantsKeyboard() const {
+        return mWantTextInput.load(std::memory_order_relaxed) || mCapturingKey.load(std::memory_order_relaxed) >= 0;
+    }
+
     // --- rendering (render thread, inside the ImGui frame) ---------------
     void draw();
 
@@ -80,7 +88,11 @@ private:
 
     // screen state (render thread only)
     std::string mOpenRow;
-    int         mCapturingKey = -1; // 0 = open screen, 1 = toggle info
+    // 0 = open screen, 1 = toggle info. Atomic because wantsKeyboard() is read from the
+    // game thread while the screen sets it on the render thread.
+    std::atomic<int> mCapturingKey{-1};
+    // Whether an ImGui text field of this screen has the caret (published by draw()).
+    std::atomic<bool> mWantTextInput{false};
     // text rows keep one persistent buffer: refilling it from the config every
     // frame would fight with ImGui's own edit state (and make the field
     // unusable after the first edit)

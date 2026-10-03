@@ -85,6 +85,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A message-only text packet - what the `tip` channel sends - now carries a fully filled payload:
   the localize flag, the filtered message and the sender's xuid and platform id, instead of
   nothing but the message body, which the client can reject as a malformed packet.
+- The two client hotkeys only fire where they belong. They used to act on any key press, so the
+  key that opens the screen also fired while typing in chat, in an anvil or on a sign, and in the
+  main menu, where it had no business being. A hotkey now needs the game to be playing - the
+  screen that owns the input has to be the HUD one, which also covers every other menu, since the
+  screens behind an open one report no focus - and no text box may be selected for typing, which
+  the client reports for chat, signs, the anvil and the creative search field alike. While the
+  configuration screen itself is up its own keys are left alone too: a rebind capture or an edited
+  text field no longer gets its key eaten by the hotkey.
 
 ## [0.3.1] - 2026-10-02
 

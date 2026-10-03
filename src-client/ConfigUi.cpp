@@ -749,6 +749,10 @@ void ConfigUi::draw() {
     if (!visible()) {
         return;
     }
+    // Publish whether the keyboard belongs to the screen (see wantsKeyboard): the text
+    // field, if any, has the caret. Set here rather than on the paths out of draw(), so
+    // that every early return still leaves the game thread with the truth.
+    mWantTextInput.store(ImGui::GetIO().WantTextInput, std::memory_order_relaxed);
     static bool styleApplied = false;
     if (!styleApplied) {
         applyStyle();

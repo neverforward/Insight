@@ -63,6 +63,11 @@ The client can also edit the configuration in a screen instead of the chat:
 
 - open it with `/cliinsight gui` or the hotkey (default <kbd>I</kbd>);
 - a second hotkey (default <kbd>K</kbd>) shows/hides the info display;
+- the hotkeys only act where they cannot take a key away from something else: the game has to be
+  playing (no menu is up - a container, the pause screen or the chat all keep the key to themselves)
+  and no text box may be selected for typing (chat, a sign, an anvil name, the creative search
+  field). While the configuration screen itself is open they belong to it, except while it waits for
+  a key to rebind or an edited field has the caret;
 - both bindings show up in the game's own key settings and can be remapped there - the config
   values `keyOpenConfig` / `keyToggleShow` are only the defaults (Windows virtual-key codes,
   `0` disables a binding);
