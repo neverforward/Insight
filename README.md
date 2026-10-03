@@ -32,7 +32,8 @@ present - the `cli` prefix keeps them apart (the same convention as LeviLamina's
                          directory; client: the overlay switch, saved to the config file)
 /insight on | off        same as above
 /insight status          show the current state (switch/interval/distance/channel, or anchor/display/language/extras)
-/insight gui             open the configuration screen (client only; the server has no screen yet)
+/insight gui             open the configuration: the client's own screen, or a form the server
+                         pushes to the player who asked
 /insight reload          re-read the configuration file (OP / operator)
 /insight set <option> <value>   change a setting in game and save it (OP / operator)
 ```
@@ -79,6 +80,22 @@ The client can also edit the configuration in a screen instead of the chat:
   column still holds a live preview of the panel plus the appearance settings; every change is
   saved immediately (the footer reports what happened);
 - while the screen is open the game does not receive keyboard/mouse input.
+
+### Configuration menu (server)
+
+A server has no screen of its own, so `/insight gui` pushes a **form** to the player who asked: a group
+picker first, then one form per group whose submit button applies everything at once. The values are
+written through the same path as `/insight set`, so the range checks, the validation and the immediate
+save behave exactly like the command - a value that is out of range says why in chat, and the menu
+reopens so another group can be edited. The groups are **General** (the master switch, distance,
+interval, the channel, ...), **Block lines**, **Entity lines**, **Colours**, **Extras: every block**,
+**Extras: block entities** and **Extras: redstone**.
+
+The client-only options are deliberately absent from the menu - `showOverlay`, the anchor, the offsets,
+the font and appearance settings, the language and the key bindings do nothing on a server.
+`.cache/check_gui_options.py` keeps that claim honest: it checks that the menu offers every option
+`/insight set` accepts on a server, and nothing else, and that every group title and row label it shows
+is translated.
 
 
 ```jsonc

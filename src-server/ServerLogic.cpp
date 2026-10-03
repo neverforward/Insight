@@ -1,23 +1,12 @@
 #include "ServerLogic.h"
 
-#include <algorithm>
 #include <cmath>
-#include <filesystem>
-#include <fstream>
 #include <map>
 #include <optional>
-
-#include "nlohmann/json.hpp"
-
-#include "ll/api/Config.h"
-#include "ll/api/command/CommandHandle.h"
-#include "ll/api/command/CommandRegistrar.h"
 #include "ll/api/event/command/ServerCommandRegisterEvent.h"
 #include "ll/api/event/player/PlayerDisconnectEvent.h"
 #include "ll/api/event/world/ServerLevelTickEvent.h"
-#include "mc/deps/core/math/Vec2.h"
 #include "mc/deps/core/math/Vec3.h"
-#include "mc/deps/core/string/HashedString.h"
 #include "mc/network/packet/SetTitlePacket.h"
 #include "mc/network/packet/TextPacket.h"
 #include "mc/network/packet/TextPacketType.h"
@@ -27,9 +16,9 @@
 #include "mc/world/level/Level.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/dimension/Dimension.h"
-#include "mc/world/level/dimension/DimensionType.h"
 
 #include "Config.h"
+#include "ConfigGui.h"
 #include "Extras.h"
 #include "EntityTarget.h"
 #include "Format.h"
@@ -198,7 +187,7 @@ bool ServerLogic::enable() {
         );
         return !cur;
     };
-    registerInsightCommand(false, toggle);
+    registerInsightCommand(false, toggle, [](Player& player) { gui::showMenu(player); });
     logger.debug("/insight command registered");
 
     // Kept for the opposite registration order: should a future engine register
@@ -207,7 +196,7 @@ bool ServerLogic::enable() {
     // (LeviLamina's own listener clears first, so the command is never doubled).
     mListeners.emplace_back(
         bus.emplaceListener<ll::event::command::ServerCommandRegisterEvent>(
-            [toggle](auto&) { registerInsightCommand(false, toggle); }
+            [toggle](auto&) { registerInsightCommand(false, toggle, [](Player& player) { gui::showMenu(player); }); }
         )
     );
 

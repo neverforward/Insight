@@ -492,7 +492,7 @@ bool ClientLogic::enable() {
     ));
     mListeners.emplace_back(bus.emplaceListener<ll::event::command::ClientCommandRegisterEvent>(
         [toggle](auto&) {
-            registerInsightCommand(true, toggle, [] { ConfigUi::instance().setVisible(true); });
+            registerInsightCommand(true, toggle, [](Player&) { ConfigUi::instance().setVisible(true); });
         }
     ));
 

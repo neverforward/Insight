@@ -239,13 +239,19 @@ void registerInsightCommand(bool isClientSide, PlayerToggleFn toggleFn, OpenConf
     });
 
     // --- gui: the configuration screen -------------------------------------
-    // Registered only where there is a screen to open. The server has none yet,
-    // so it does not advertise a subcommand that could only answer "not here";
-    // it will pass `openUi` once it has a screen of its own.
+    // Registered only where there is a screen to open, and always for the player who
+    // asked: the client shows a local screen, the server pushes a form to that player, so
+    // a console origin has nobody to show anything to.
     if (openUi) {
         cmd.overload().text("gui").execute([openUi](CommandOrigin const& origin, CommandOutput& output) {
-            openUi();
-            output.success(tr(origin.getLocaleCode(), "Insight configuration screen opened."));
+            auto*      player     = playerFromOrigin(origin);
+            auto const localeCode = origin.getLocaleCode();
+            if (player == nullptr) {
+                output.error(tr(localeCode, "This command can only be run by a player."));
+                return;
+            }
+            openUi(*player);
+            output.success(tr(localeCode, "Insight configuration screen opened."));
         });
     }
 

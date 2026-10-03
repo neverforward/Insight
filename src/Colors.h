@@ -54,4 +54,9 @@ inline constexpr char kSectionSign[] = "\xC2\xA7";
 // Returns false for an empty or unknown code, leaving the caller's colour alone.
 [[nodiscard]] bool colorRgb(std::string const& code, float& r, float& g, float& b);
 
+// How a code is named in the configuration screens ("c" -> "Red"), translated for
+// `locale`; an empty code reads as "None". Shared so the client's screen and the
+// server's menu show the same names.
+[[nodiscard]] std::string colorDisplayName(std::string const& code, std::string const& locale);
+
 } // namespace insight

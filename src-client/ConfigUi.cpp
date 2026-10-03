@@ -519,59 +519,18 @@ std::string choiceLabel(std::string const& value, std::string const& locale) {
     return value;
 }
 
-// The colour rows store a single formatting code, so their value ("c") is shown
-// as the colour's name. This deliberately lives apart from choiceLabel(): that one
-// is used for every row's value column, and mapping bare "1"/"c" there renamed
-// ordinary numbers - a font size of 1 came out as "Dark blue".
-std::string colorLabel(std::string const& value, std::string const& locale) {
-    static constexpr std::pair<char const*, char const*> kColorNames[] = {
-        {"",  "None"          },
-        {"0", "Black"         },
-        {"1", "Dark blue"     },
-        {"2", "Dark green"    },
-        {"3", "Dark aqua"     },
-        {"4", "Dark red"      },
-        {"5", "Dark purple"   },
-        {"6", "Gold"          },
-        {"7", "Gray"          },
-        {"8", "Dark gray"     },
-        {"9", "Blue"          },
-        {"a", "Green"         },
-        {"b", "Aqua"          },
-        {"c", "Red"           },
-        {"d", "Light purple"  },
-        {"e", "Yellow"        },
-        {"f", "White"         },
-        {"g", "Minecoin gold" },
-        {"h", "Quartz"        },
-        {"i", "Iron"          },
-        {"j", "Netherite"     },
-        {"m", "Redstone"      },
-        {"n", "Copper"        },
-        {"p", "Gold ingot"    },
-        {"q", "Emerald"       },
-        {"s", "Diamond"       },
-        {"t", "Lapis"         },
-        {"u", "Amethyst"      },
-        {"v", "Resin"         },
-        {"w", "Party blue"    },
-    };
-    for (auto const& [code, key] : kColorNames) {
-        if (value == code) {
-            return tr(locale, key);
-        }
-    }
-    return value;
-}
+// The colour rows store a single formatting code, so their value ("c") is shown as the
+// colour's name (colorDisplayName, shared with the server's menu). This deliberately lives
+// apart from choiceLabel(): that one is used for every row's value column, and mapping bare
+// "1"/"c" there renamed ordinary numbers - a font size of 1 came out as "Dark blue".
 
-// Is this the option name of a colour row? Only those resolve a value to a colour
-// name - see colorLabel().
+// Is this the option name of a colour row? Only those resolve a value to a colour name.
 bool isColorRow(std::string const& option) { return option.rfind("colors.", 0) == 0; }
 
 // How one row's value is written out: colour names for the colour rows, the fixed
 // token names for the other choices, the value itself otherwise.
 std::string valueLabel(Row const& row, std::string const& value, std::string const& locale) {
-    return isColorRow(row.option) ? colorLabel(value, locale) : choiceLabel(value, locale);
+    return isColorRow(row.option) ? colorDisplayName(value, locale) : choiceLabel(value, locale);
 }
 
 bool rowIsOn(Row const& row, std::string const& locale) { return currentValueText(row, locale) == tr(locale, "On"); }

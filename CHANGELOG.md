@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   label colour - the same fixed-width track the client paints, red for the hit points by default. The
   icon rows are deliberately *not* spelled out there: the font's glyph hearts read badly in a vanilla
   channel, so a server shows the numbers for those styles.
+- `/insight gui` opens a configuration **menu on the server** as well, since a server has no screen of
+  its own: it pushes a group picker followed by one form per group to the player who asked. The values
+  go through the same path as `/insight set`, so the range checks, the validation and the immediate
+  save behave exactly like the command - a value that is out of range says why in chat and the menu
+  reopens. The groups are **General** (the master switch, distance, interval, the channel, ...),
+  **Block lines**, **Entity lines**, **Colours**, **Extras: every block**, **Extras: block entities**
+  and **Extras: redstone**, which covers every option that means something on a server.
 
 ### Changed
 
@@ -59,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In the `+number` styles the client writes the row's own "label number" text behind the sprites,
   never the line itself: that line may carry a bar spelled out in block characters for a server
   channel, which must not appear next to the sprites.
+- The `gui` subcommand is registered on both sides now (it used to exist on the client only) and is
+  always opened for the player who asked: the client shows its own screen, the server pushes the menu.
+  A console origin is told that the command can only be run by a player. The client-only options are
+  absent from the server's menu - `showOverlay`, the anchor, the offsets, the font and appearance
+  settings, the language and the key bindings do nothing there.
 
 ## [0.3.1] - 2026-10-02
 

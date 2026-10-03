@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cctype>
 #include <string_view>
+#include <utility>
+
+#include "I18n.h"
 
 namespace insight {
 
@@ -89,6 +92,49 @@ std::string colored(std::string const& code, std::string const& text) {
         return {};
     }
     return colorPrefix(code) + text;
+}
+
+std::string colorDisplayName(std::string const& code, std::string const& locale) {
+    // The name of every code this mod accepts, in the order of the palette above.
+    static constexpr std::pair<char, char const*> kNames[] = {
+        {'\0', "None"         },
+        {'0',  "Black"        },
+        {'1',  "Dark blue"    },
+        {'2',  "Dark green"   },
+        {'3',  "Dark aqua"    },
+        {'4',  "Dark red"     },
+        {'5',  "Dark purple"  },
+        {'6',  "Gold"         },
+        {'7',  "Gray"         },
+        {'8',  "Dark gray"    },
+        {'9',  "Blue"         },
+        {'a',  "Green"        },
+        {'b',  "Aqua"         },
+        {'c',  "Red"          },
+        {'d',  "Light purple" },
+        {'e',  "Yellow"       },
+        {'f',  "White"        },
+        {'g',  "Minecoin gold"},
+        {'h',  "Quartz"       },
+        {'i',  "Iron"         },
+        {'j',  "Netherite"    },
+        {'m',  "Redstone"     },
+        {'n',  "Copper"       },
+        {'p',  "Gold ingot"   },
+        {'q',  "Emerald"      },
+        {'s',  "Diamond"      },
+        {'t',  "Lapis"        },
+        {'u',  "Amethyst"     },
+        {'v',  "Resin"        },
+        {'w',  "Party blue"   },
+    };
+    char const wanted = code.empty() ? '\0' : lower(code[0]);
+    for (auto const& [letter, key] : kNames) {
+        if (letter == wanted) {
+            return tr(locale, key);
+        }
+    }
+    return code;
 }
 
 } // namespace insight
