@@ -16,7 +16,8 @@ namespace insight {
 // Server (BDS) only options.
 struct ServerOptions {
     // Display channel used by the server build:
-    //   "actionbar" (default) | "tip" | "popup" | "jukebox" | "system" | "chat" | "none"
+    //   "actionbar" (default) | "tip" | "jukebox" | "system" | "chat" | "none"
+    // "popup" is deliberately not offered: it drops the client connection (see CHANGELOG).
     std::string channel = "actionbar";
 };
 

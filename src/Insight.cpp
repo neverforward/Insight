@@ -544,7 +544,7 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
         return setEnum(
             gConfig.server.channel,
             "channel",
-            {"none", "actionbar", "tip", "popup", "jukebox", "system", "chat"}
+            {"none", "actionbar", "tip", "jukebox", "system", "chat"}
         );
     }
 

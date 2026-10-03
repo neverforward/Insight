@@ -188,7 +188,7 @@ is translated.
     "entityEnabled": true,         // also show entities under the crosshair
 
     "server": {
-        "channel": "actionbar"     // none | actionbar | tip | popup | jukebox | system | chat
+        "channel": "actionbar"     // none | actionbar | tip | jukebox | system | chat
     },
 
     "client": {

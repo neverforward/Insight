@@ -72,6 +72,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   absent from the server's menu - `showOverlay`, the anchor, the offsets, the font and appearance
   settings, the language and the key bindings do nothing there.
 
+### Removed
+
+- The `server.channel: "popup"` value is gone. A popup sent as a text packet made the client
+  reject it and drop the connection (the "Block" error on join, "There was an issue with the
+  Minecraft data being sent or received"), so the channel is removed rather than kept as a trap.
+  A configuration file that still says `"popup"` falls back to `actionbar`, exactly like any
+  other value the channel list does not know. `actionbar` and `tip` remain.
+
+### Fixed
+
+- A message-only text packet - what the `tip` channel sends - now carries a fully filled payload:
+  the localize flag, the filtered message and the sender's xuid and platform id, instead of
+  nothing but the message body, which the client can reject as a malformed packet.
+
 ## [0.3.1] - 2026-10-02
 
 ### Fixed

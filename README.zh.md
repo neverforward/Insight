@@ -172,7 +172,7 @@
     "entityEnabled": true,         // 准星指向实体时也显示
 
     "server": {
-        "channel": "actionbar"     // none | actionbar | tip | popup | jukebox | system | chat
+        "channel": "actionbar"     // none | actionbar | tip | jukebox | system | chat
     },
 
     "client": {

@@ -33,12 +33,22 @@ namespace {
 // ---------------------------------------------------------------------------
 // packet helpers
 // ---------------------------------------------------------------------------
+// A message-only text packet - `tip` is the only channel left that uses one. Every field of
+// the payload matters: the packet goes on the wire as `message` + a `localize` flag + the
+// filtered message, so a payload that carries nothing but the body leaves the rest undefined -
+// which is what made the removed `popup` channel drop the connection. `makeMessageOnly()` in
+// mc/common/Globals.h is the engine's own helper for this, but it is declared without being
+// exported in this build (LNK2019), so the same fields are filled in here.
 void sendTextPacket(ServerPlayer& player, TextPacketType type, std::string const& text) {
     TextPacket pkt;
     TextPacketPayload::MessageOnly message;
     message.mType = type;
     message.mMessage->assign(text);
-    pkt.mBody = message;
+    pkt.mBody            = message;
+    pkt.mLocalize        = false; // plain text: a localize flag would make it a translation key
+    pkt.mFilteredMessage = std::nullopt;
+    pkt.mXuid            = player.getXuid();
+    pkt.mPlatformId      = *player.mPlatformOnlineId;
     player.sendNetworkPacket(pkt);
 }
 
@@ -61,8 +71,6 @@ void sendViaChannel(ServerPlayer& player, std::string const& channel, std::strin
         sendActionbar(player, text);
     } else if (channel == "tip") {
         sendTextPacket(player, TextPacketType::Tip, text);
-    } else if (channel == "popup") {
-        sendTextPacket(player, TextPacketType::Popup, text);
     } else if (channel == "jukebox") {
         auto pkt = TextPacketPayload::createJukeboxPopup(text, {});
         player.sendNetworkPacket(pkt);

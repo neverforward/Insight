@@ -117,7 +117,7 @@ std::vector<Group> const& groups() {
               0,
               0,
               0,
-              {"none", "actionbar", "tip", "popup", "jukebox", "system", "chat"},
+              {"none", "actionbar", "tip", "jukebox", "system", "chat"},
               [] { return Insight::cfg().server.channel; }},
          }},
         {"Block lines",
