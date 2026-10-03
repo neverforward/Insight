@@ -62,6 +62,25 @@ private:
     // mText the moment the subject is lost, and drawing nothing there would blink the panel
     // away instead of fading it out.
     std::string mShownText;
+
+    // The sprite rows the panel draws (the entity's hit points and armour, see
+    // EntityOptions::hearts): which line of the text each one replaces, and the values
+    // they show. Published by the sampler and copied to mShownSprites together with
+    // mShownText, because a line index only means something for the text it came from.
+    struct PanelSprites {
+        int   healthLine = -1;   // line the hearts go on, -1 = none
+        int   armorLine  = -1;   // line the armour sprites go on, -1 = none
+        float health     = 0.0f; // hit points to fill the hearts with
+        float healthMax  = 0.0f; // hit points at full health = number of hearts
+        float armor      = 0.0f; // armour points to fill the armour icons with
+        int   perRow     = 10;   // sprites per row (EntityOptions::heartsPerRow)
+        // "label number" of each row, written behind the sprites in the "+number" styles.
+        // Deliberately *not* the line's own text, which may be a bar of block characters.
+        std::string healthText;
+        std::string armorText;
+    };
+    PanelSprites mSprites;       // the current subject's sprite rows
+    PanelSprites mShownSprites;  // the ones the drawn text belongs to
     // Fade of the native panel, driven by client.transitionTime, so the display still fades
     // in and out the way the ImGui one did.
     float mNativeFade = 0.0f;

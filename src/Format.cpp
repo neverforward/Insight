@@ -1,7 +1,7 @@
 #include "Format.h"
 
 #include <algorithm>
-#include <cctype>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -40,6 +40,10 @@ LookInfo makeEntityLookInfo(std::string const& entityName, std::string const& en
         info.health    = health;
         info.maxHealth = maxHealth;
     }
+    // The float pair is what the icons and the bar fill against; the client replaces it
+    // with the attribute's exact value, the server keeps the integer reading.
+    info.healthExact = static_cast<float>(health);
+    info.healthMax   = static_cast<float>(maxHealth);
     return info;
 }
 
@@ -51,6 +55,40 @@ std::string healthText(int health, int maxHealth) {
         return {};
     }
     return std::to_string(health) + "/" + std::to_string(maxHealth);
+}
+
+// Bar pieces: one block per step. The filled part of the bar is drawn in the colour the
+// config gives that stat (red for the hit points by default), the empty rest in the muted
+// label colour, so the track reads as a background rather than as a second bar.
+constexpr char kBarFull[] = "\xE2\x96\x88"; // U+2588
+constexpr char kBarHalf[] = "\xE2\x96\x8C"; // U+258C
+
+// Armor has no attribute of its own: the vanilla bar (and the client's armor icons) top
+// out at twenty points, which is what the text bar fills against too.
+constexpr float kArmorFull = 20.0f;
+
+// The bar as text: `steps` blocks wide, filled in proportion to the value, the rest a
+// track in another colour. This is what a server-side channel sends - the client paints
+// its own bar instead, but the two are the same fixed-width shape.
+std::string barRun(std::string const& fillColor, std::string const& trackColor, float points, float full, int steps) {
+    steps                = std::max(1, steps);
+    float const capacity = full > 0.0f ? full : 1.0f;
+    float const progress = std::clamp(points, 0.0f, capacity) / capacity * static_cast<float>(steps);
+    int const   whole    = std::min(steps, static_cast<int>(std::floor(progress)));
+    bool const  half     = whole < steps && progress - static_cast<float>(whole) >= 0.5f;
+
+    std::string fill;
+    for (int i = 0; i < whole; ++i) {
+        fill += kBarFull;
+    }
+    if (half) {
+        fill += kBarHalf;
+    }
+    std::string track;
+    for (int i = whole + (half ? 1 : 0); i < steps; ++i) {
+        track += kBarFull;
+    }
+    return colored(fillColor, fill) + colored(trackColor, track);
 }
 
 // One "label value" part, the shape the per-block extras use: the label in the
@@ -201,7 +239,7 @@ std::string renderBlockText(Config const& cfg, LookInfo const& info, std::string
 // The entity panel: name (compass facing), type id (key), position (distance), hit
 // points, then the per-entity extras. No light level and no light emission: those
 // describe a position in the world, not the entity under the crosshair.
-std::string renderEntityText(Config const& cfg, LookInfo const& info, std::string const& localeCode) {
+std::string renderEntityText(Config const& cfg, LookInfo& info, std::string const& localeCode) {
     auto const&              e = cfg.entity;
     auto const&              c = cfg.colors;
     std::vector<std::string> lines;
@@ -210,16 +248,57 @@ std::string renderEntityText(Config const& cfg, LookInfo const& info, std::strin
     pushLine(lines, idLine(info.entityType, info.entityKey, e.identifier, e.translationKey, c));
     pushLine(lines, positionLine(info, e.position, e.distance, c));
 
-    // Hit points have their own colour (colors.health) instead of the generic
-    // value colour: they are the one line most people want to stand out.
+    // Hit points and armor. The client paints a sprite row or a bar over these two lines;
+    // what the text says is what a server-side channel sends, and there the icon rows are
+    // deliberately *not* spelled out in font glyphs (they read badly in a vanilla channel)
+    // - only the bar is, as a run of blocks. The number form is always what the rows carry
+    // otherwise, and the client shows the same "label + number" behind its sprite row in
+    // the "+number" styles.
+    std::string const style    = e.healthStyle;
+    bool const        barStyle = style == "bar" || style == "bar+number";
+    int const         steps    = std::max(1, e.heartsPerRow);
+
     std::string health;
     if (e.health && info.hasHealth) {
-        health = colored(c.health, healthText(info.health, info.maxHealth));
-        if (!health.empty()) {
-            health = colored(c.label, tr(localeCode, "Health")) + " " + health;
+        std::string const numbers =
+            e.healthDecimals && info.healthMax > 0.0f
+                ? util::trimNumber(info.healthExact, 1) + "/" + util::trimNumber(info.healthMax, 0)
+                : healthText(info.health, info.maxHealth);
+
+        // What sits next to a sprite row: the label and the plain numbers.
+        info.healthText = colored(c.label, tr(localeCode, "Health")) + " " + colored(c.health, numbers);
+
+        std::string value = colored(c.health, numbers);
+        if (barStyle && info.healthMax > 0.0f) {
+            value = barRun(c.health, c.label, info.healthExact, info.healthMax, steps);
+            if (style == "bar+number") {
+                value += " " + colored(c.health, numbers);
+            }
         }
+        health = colored(c.label, tr(localeCode, "Health")) + " " + value;
     }
-    pushLine(lines, health);
+    if (!health.empty()) {
+        info.healthLine = static_cast<int>(lines.size());
+        lines.push_back(std::move(health));
+    }
+
+    // Armor, right under the hit points, and only when the subject has some: a mob
+    // without armor shows nothing rather than "0", the way every other part of the
+    // panel drops what the target does not have.
+    if (e.armor && info.hasArmor) {
+        std::string const numbers = util::trimNumber(info.armorValue, 0);
+        info.armorText            = colored(c.label, tr(localeCode, "Armor")) + " " + colored(c.value, numbers);
+
+        std::string value = colored(c.value, numbers);
+        if (barStyle) {
+            value = barRun(c.value, c.label, info.armorValue, kArmorFull, steps);
+            if (style == "bar+number") {
+                value += " " + colored(c.value, numbers);
+            }
+        }
+        info.armorLine = static_cast<int>(lines.size());
+        lines.push_back(colored(c.label, tr(localeCode, "Armor")) + " " + value);
+    }
 
     appendExtras(lines, info.extras, e.extras);
     return joinLines(lines);

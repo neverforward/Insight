@@ -83,7 +83,7 @@ The client can also edit the configuration in a screen instead of the chat:
 
 ```jsonc
 {
-    "version": 6,                  // schema version; older files are merged automatically, and the
+    "version": 7,                  // schema version; older files are merged automatically, and the
                                    // templates of a version <= 4 file become display / entity
                                    // switches (see below)
 
@@ -116,6 +116,11 @@ The client can also edit the configuration in a screen instead of the chat:
         "position": true,              // position line: x, y, z of the entity
         "distance": false,             // position line: distance to the entity in blocks
         "health": true,                // state line: current/max hit points; hidden for entities without health (items, projectiles, paintings)
+        "healthStyle": "hearts",       // how the hit points (and the armor row) are drawn, client only: bar | bar+number | hearts | hearts+number | number
+        "heartsThreshold": 40.0,       // hit points; in hearts mode a subject with more maximum health than this keeps the numbers instead
+        "heartsPerRow": 10,            // hearts per row (bar mode: how wide the bar is, measured in hearts); every further row starts above the one before and overlaps it by half a heart
+        "healthDecimals": false,       // one decimal on the hit points in number mode, e.g. 19.5/20
+        "armor": true,                 // show the armor row, drawn in the same style as the hit points
         "extras": true                 // per-entity extra lines (the same extras.* adapters as the block side, gated by extras.enabled too)
     },
 
@@ -228,6 +233,11 @@ choose what an entity panel contains once one is targeted.
 | `entity.position` | `true` | `x, y, z` of the entity, the position line |
 | `entity.distance` | `false` | distance to the entity in blocks, behind the position |
 | `entity.health` | `true` | hit points as `current/max`, e.g. `§7Health §f12/20`; hidden for entities without health (items, projectiles, paintings) |
+| `entity.healthStyle` | `hearts` | how the hit points and the armor row are drawn (client only, see below): `bar`, `bar+number`, `hearts`, `hearts+number` or `number` |
+| `entity.heartsThreshold` | `40` | hit points; in `hearts` mode a subject whose **maximum** health is at most this is drawn as hearts, anything bigger keeps the numbers |
+| `entity.heartsPerRow` | `10` | hearts on one row before the next row starts above it; in `bar` mode it is how wide the bar is, measured in hearts |
+| `entity.healthDecimals` | `false` | show one decimal on the hit points in `number` mode, e.g. `19.5/20` |
+| `entity.armor` | `true` | show the armor row, drawn in the same style as the hit points, e.g. `§7Armor §f15` in `number` mode |
 | `entity.extras` | `true` | the per-entity extra lines (container entities such as chest / hopper minecarts and boats with chest, paintings, worn equipment); the same `extras.*` adapters as the block side, gated by `extras.enabled` too |
 
 ### colours
@@ -257,6 +267,42 @@ The codes are the usual sixteen, plus the ones only Bedrock has:
 `colors.label` and `colors.value` are what the labelled lines use, so they cover the extras lines
 too: a chest's `Items 12/27` is a label plus a value, not a separate setting. The codes shown
 throughout this file (`§7`, `§f`, ...) are the defaults.
+
+### hit points and armor: bar, hearts or numbers
+
+The entity panel can draw the hit points and the armor row in three ways, chosen with
+`entity.healthStyle` (and it applies to both rows):
+
+- **`bar`** - one bar per row, painted by the game's own UI renderer: a rounded dark track with the
+  fill laid over it, its width in proportion to the value. The fill takes its colour from the colour
+  scheme (`colors.health` for the hit points, `colors.value` for the armor). A bar has no upper limit,
+  so `heartsThreshold` does not apply; `heartsPerRow` sets how wide it is, measured in hearts.
+- **`hearts`** - the game's own heart sprites, and armor sprites for the armor row. One heart is
+  **two hit points** and half a heart is as fine as it gets. `entity.heartsThreshold` is compared
+  against the subject's **maximum** health, not its current one, so the panel cannot flip between
+  hearts and numbers while a fight is going on: a player or a zombie (20) is drawn as hearts at the
+  default 40, an iron golem (100) or the ender dragon keeps the numbers. `entity.heartsPerRow` hearts
+  fit on a row; every further row starts **above** the previous one and overlaps it by half a heart,
+  so the upper row covers the lower one.
+- **`number`** - the plain `current/max` text, which is also what a server install always shows.
+- **`bar+number`** / **`hearts+number`** - the same bar or hearts with the line's own number
+  (`Health 12/20`) written behind them, so a row shows both the graphic and the exact value. A row
+  like this is one line of text tall, with the graphic centred against it.
+
+Every row is exactly one line of text tall, so the panel keeps its rhythm whatever the style is. The
+whole drawing is **client only**: a server-side channel carries text to the vanilla UI, and the
+server build has no way to put a sprite in it.
+
+A **server** install spells the bar out in text instead, because that is all a vanilla channel can carry:
+`█` for every whole step, a left half block `▌` for half a step, and the empty rest as the same `█` in the
+muted label colour - the same fixed-width track the client paints. The icon styles are deliberately not
+spelled out there, because the font's own glyphs read badly in a vanilla channel: a server shows the
+numbers for the heart styles, and the `+number` styles put those numbers behind the icons or the bar on
+the client.
+
+Two details worth knowing: an entity with no armor at all keeps the number line rather than showing an
+empty row, and when a sprite cannot be loaded that row falls back to its number text, so a line is
+never blank.
 
 The lines those switches produce, in order. A block panel:
 

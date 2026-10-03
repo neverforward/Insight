@@ -30,11 +30,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the colour's name (Red, Dark aqua, Minecoin gold, ...) rather than its code.
   `/insight set <colors.*> <code>` takes the bare code or the `§c` / `&c` / `#c` spellings, and
   `none` clears the colour again.
+- The entity panel draws the hit points and the armor row itself, and `entity.healthStyle` picks how:
+  `bar`, `bar+number`, `hearts`, `hearts+number` or `number` (it covers both rows). The bar is painted
+  by the game's own UI renderer - a rounded dark track with the fill laid over it - and takes its colour
+  from the scheme (`colors.health` for the hit points, `colors.value` for the armor). The hearts are the
+  vanilla sprites (`heart_new`, falling back to `heart`), with the background sprite and the half sprite
+  over it for a half heart, and every row is exactly one line of text tall. A row is drawn for the
+  subject's whole scale, not for what is left of it, so hearts that have been lost stay visible as their
+  background sprites.
+- `entity.heartsThreshold`, `entity.heartsPerRow`, `entity.healthDecimals` and `entity.armor`: how many
+  points still fit as icons (a subject whose *maximum* health is above the threshold keeps the numbers,
+  so a boss does not turn into a wall of hearts while a player or a zombie does get them), how many
+  hearts fit on a row before the next one starts above it and overlaps the row below by half a heart
+  (in the bar styles it is the bar's width instead), whether the hit points carry one decimal, and
+  whether the armor row appears at all.
+- On a **server** install the bar is spelled out in text, because that is all a vanilla channel
+  carries: `█` per whole step, `▌` for half a step and the empty rest as the same `█` in the muted
+  label colour - the same fixed-width track the client paints, red for the hit points by default. The
+  icon rows are deliberately *not* spelled out there: the font's glyph hearts read badly in a vanilla
+  channel, so a server shows the numbers for those styles.
 
 ### Changed
 
 - Higher `Config` schema version (6) for the `colors` group; an existing file is merged
   automatically and keeps every value it already has.
+- Higher `Config` schema version (7) as well, for the entity display options above; an existing file
+  is merged automatically.
+- In the `+number` styles the client writes the row's own "label number" text behind the sprites,
+  never the line itself: that line may carry a bar spelled out in block characters for a server
+  channel, which must not appear next to the sprites.
 
 ## [0.3.1] - 2026-10-02
 

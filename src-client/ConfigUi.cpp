@@ -263,6 +263,8 @@ bool const* findBoolOption(std::string const& option) {
         {"entity.distance",        &cfg.entity.distance        },
         {"entity.health",          &cfg.entity.health          },
         {"entity.extras",          &cfg.entity.extras          },
+        {"entity.healthDecimals",  &cfg.entity.healthDecimals  },
+        {"entity.armor",           &cfg.entity.armor           },
         {"showOverlay",            &cfg.client.showOverlay     },
         {"hideOverlayInGui",       &cfg.client.hideOverlayInGui},
         {"background",             &cfg.client.background      },
@@ -407,6 +409,15 @@ std::string currentValueText(Row const& row, std::string const& locale) {
     if (row.option == "intervalTicks") {
         return std::to_string(cfg.intervalTicks);
     }
+    if (row.option == "entity.healthStyle") {
+        return cfg.entity.healthStyle;
+    }
+    if (row.option == "entity.heartsThreshold") {
+        return util::trimNumber(cfg.entity.heartsThreshold, 1);
+    }
+    if (row.option == "entity.heartsPerRow") {
+        return std::to_string(cfg.entity.heartsPerRow);
+    }
     if (row.option == "offsetX") {
         return util::trimNumber(cfg.client.offsetX, 2);
     }
@@ -484,6 +495,11 @@ std::string choiceLabel(std::string const& value, std::string const& locale) {
         {"on",            "On"           },
         {"off",           "Off"          },
         {"auto",          "Auto"         },
+        {"bar",           "Bar"          },
+        {"bar+number",    "Bar + number" },
+        {"hearts",        "Hearts"       },
+        {"hearts+number", "Hearts + number"},
+        {"number",        "Number"       },
     };
     // shipped message files are named after their locale: show them natively
     static constexpr std::pair<char const*, char const*> kNativeNames[] = {
@@ -1055,6 +1071,24 @@ void ConfigUi::draw() {
                     {"Health", "entity.health", Kind::Bool, 0.0f, 0.0f, false, {}},
             },
                 380
+            );
+            drawSection(
+                "Hit point sprites",
+                {
+                    {"Health style",
+                     "entity.healthStyle",                     Kind::Enum,
+                     0.0f,                                              0.0f,
+                     false,                                                      {"bar",
+                                                                                  "bar+number",
+                                                                                  "hearts",
+                                                                                  "hearts+number",
+                                                                                  "number"}    },
+                    {"Hearts threshold", "entity.heartsThreshold", Kind::Float, 2.0f, 200.0f, false, {}                                     },
+                    {"Hearts per row",   "entity.heartsPerRow",    Kind::Int,   1.0f,  40.0f, false, {}                                     },
+                    {"Health decimals",  "entity.healthDecimals",  Kind::Bool,  0.0f,   0.0f, false, {}                                     },
+                    {"Armor row",        "entity.armor",           Kind::Bool,  0.0f,   0.0f, false, {}                                     },
+            },
+                390
             );
             drawSection(
                 "Extras",

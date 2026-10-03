@@ -288,6 +288,14 @@ void ServerLogic::onTick(ll::event::ServerLevelTickEvent& event) {
             // no emission, which describe a world position, not the entity.
             info.entityKey = entityDisplayKey(entity);
             info.direction = describeEntityFacing(*entity, sp.getLanguageCode());
+            // The armor row: a server has no sprites, but the config's style controls the
+            // text it sends as well, so the same row is spelled out in the font's glyphs.
+            if (cfg.entity.armor) {
+                if (auto const armor = entityArmorValue(*entity); armor && *armor > 0) {
+                    info.hasArmor   = true;
+                    info.armorValue = static_cast<float>(*armor);
+                }
+            }
             {
                 auto const& epos = entity->getPosition();
                 info.x           = static_cast<int>(std::floor(epos.x));

@@ -154,6 +154,36 @@ struct EntityOptions {
     // --- fourth line: hit points ------------------------------------------
     bool health = true; // "current/max"; hidden for entities without health
 
+    // How the hit points are drawn (client only: a server-side channel carries text
+    // to the vanilla UI, and the server build has no way to put a sprite in it):
+    //   "bar"           - one bar per row, filled in proportion to the value, painted by
+    //                     the UI renderer in colors.health / colors.value
+    //   "bar+number"    - the same bar, with the line's own number behind it
+    //   "hearts"        - the game's own heart sprites (armor: armor sprites)
+    //   "hearts+number" - the same hearts, with the number behind them
+    //   "number"        - the plain "current/max" text, exactly what the server shows
+    // The bar has no upper limit, so `heartsThreshold` does not apply to it; a subject
+    // whose *maximum* health is above the threshold keeps the numbers in the heart
+    // modes, so a boss never turns into a wall of hearts while a player or a zombie
+    // does get them. The threshold counts hit points and one heart is two of them;
+    // `heartsPerRow` hearts fit on a row before the next row starts above it,
+    // overlapping the row below by half a heart (in the bar modes it is the bar's width,
+    // measured in hearts).
+    std::string healthStyle = "hearts";
+    float       heartsThreshold = 40.0f;
+    int         heartsPerRow    = 10;
+
+    // Show one decimal on the hit points. The engine keeps a fractional value
+    // behind the integer one, so "19.5" is a real reading rather than rounding
+    // noise. Only the number form is affected - neither a sprite nor a bar can show
+    // half a point more precisely than half a heart.
+    bool healthDecimals = false;
+
+    // Show the armor value at all, drawn in the same style as the hit points. An
+    // entity that has no armor keeps the number line, so this cannot make a line
+    // disappear.
+    bool armor = true;
+
     // --- extra lines ------------------------------------------------------
     bool extras = true; // per-entity adapters (equipment, ...); the interface is in
                         // place, the adapters themselves come later
@@ -184,11 +214,11 @@ struct ColorOptions {
     std::string health         = "c"; // the entity's hit points
 };
 
-// Per-block extra info adapters. Every adapter has its own switch, so a line a
-// player does not care about can be silenced without losing the others;
-// `enabled` gates all of them. Data availability differs by platform: containers
-// and block entities exist server-side and in a local (single player) client
-// world; on a client connected to a remote server only local world data is
+// Extra info adapters, for blocks and for entities alike. Every adapter has its own
+// switch, so a line a player does not care about can be silenced without losing the
+// others; `enabled` gates all of them. Data availability differs by platform:
+// containers and block entities exist server-side and in a local (single player)
+// client world; on a client connected to a remote server only local world data is
 // visible, so some adapters may silently show nothing there.
 struct BlockExtrasConfig {
     bool enabled = true; // master switch for every adapter below
@@ -237,8 +267,10 @@ struct Config {
     // its own switch (BlockExtrasConfig). 3 -> 4: client.transitionTime (panel
     // fade). 4 -> 5: removed format / entityFormat / the per-block-type format
     // overrides in favour of the per-field switches in DisplayOptions (display.*).
-    // 5 -> 6: the per-field colours (ColorOptions, `colors`).
-    int version = 6;
+    // 5 -> 6: the per-field colours (ColorOptions, `colors`). 6 -> 7: how the entity
+    // panel draws the hit points and the armor row (entity.healthStyle, its
+    // threshold, row size and decimals, and entity.armor).
+    int version = 7;
 
     // Master switch for the whole mod.
     bool enabled = true;

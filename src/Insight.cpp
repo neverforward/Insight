@@ -439,6 +439,27 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
     if (lower == "entityenabled") {
         return setBool(gConfig.entityEnabled, "entityEnabled");
     }
+    // The hit point / armor sprites: how many points still fit as sprites and how
+    // many sprites fit on a row (EntityOptions::heartsThreshold / heartsPerRow), and
+    // how the two rows are drawn at all (EntityOptions::healthStyle).
+    if (lower == "entity.healthstyle") {
+        return setEnum(
+            gConfig.entity.healthStyle,
+            "entity.healthStyle",
+            {"bar", "bar+number", "hearts", "hearts+number", "number"}
+        );
+    }
+    if (lower == "entity.heartsthreshold") {
+        return setNumber(gConfig.entity.heartsThreshold, "entity.heartsThreshold", 2, 200);
+    }
+    if (lower == "entity.heartsperrow") {
+        long v = 0;
+        if (!parseInt(value, v) || v < 1 || v > 40) {
+            return {false, tr(localeCode, "Invalid entity.heartsPerRow (1..40)")};
+        }
+        gConfig.entity.heartsPerRow = static_cast<int>(v);
+        return finish({true, tr(localeCode, "set {0} = {1}", "entity.heartsPerRow", std::to_string(v))});
+    }
 
     // --- display switches: one per field the panel can show (DisplayOptions).
     // These are what replaced the format / entityFormat text templates. ---
@@ -482,6 +503,8 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
                  EntitySwitch{"entity.distance",       &gConfig.entity.distance      },
                  EntitySwitch{"entity.health",         &gConfig.entity.health        },
                  EntitySwitch{"entity.extras",         &gConfig.entity.extras        },
+                 EntitySwitch{"entity.healthDecimals", &gConfig.entity.healthDecimals},
+                 EntitySwitch{"entity.armor",          &gConfig.entity.armor         },
              }) {
             if (lower == util::toLower(entry.name)) {
                 return setBool(*entry.target, entry.name);

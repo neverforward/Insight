@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cmath>
 
+#include "mc/world/actor/ActorCategory.h"
+#include "mc/world/actor/Mob.h"
 #include "mc/world/actor/player/Player.h"
+#include "mc/world/attribute/AttributeInstance.h"
 #include "mc/world/attribute/AttributeInstanceConstRef.h"
 #include "mc/world/attribute/SharedAttributes.h"
 
@@ -130,6 +133,25 @@ bool entityHasHealth(Actor const& actor) {
     // instance (items, projectiles, paintings, flying blocks, ...), so the
     // engine answers this directly and no list of type names is needed.
     return actor.getAttribute(SharedAttributes::HEALTH()).mPtr != nullptr;
+}
+
+float entityHealthExact(Actor const& actor) {
+    // The attribute carries the real value; the integer accessors round it, so a
+    // half heart of damage would read as a whole one through them.
+    if (auto const& attribute = actor.getAttribute(SharedAttributes::HEALTH()); attribute.mPtr != nullptr) {
+        return attribute.mPtr->mCurrentValue;
+    }
+    return static_cast<float>(actor.getHealth());
+}
+
+std::optional<int> entityArmorValue(Actor const& actor) {
+    // Armour is not an attribute in Bedrock (SharedAttributes has no ARMOR entry),
+    // it is Mob::getArmorValue(); hasCategory() is the engine's own way of asking
+    // whether the actor is a mob at all, so no list of entity types is involved.
+    if (!actor.hasCategory(ActorCategory::Mob)) {
+        return std::nullopt;
+    }
+    return static_cast<Mob const&>(actor).getArmorValue();
 }
 
 } // namespace insight

@@ -48,4 +48,10 @@ inline constexpr char kSectionSign[] = "\xC2\xA7";
 // them (the sixteen everyone knows, then the Bedrock extras).
 [[nodiscard]] std::string const& colorCodeChoices();
 
+// The RGB a code draws in (0..1 per channel). Needed where the panel paints with
+// a colour itself instead of handing a "§" code to the text renderer - the hit
+// point and armor bars take their fill from colors.health / colors.value.
+// Returns false for an empty or unknown code, leaving the caller's colour alone.
+[[nodiscard]] bool colorRgb(std::string const& code, float& r, float& g, float& b);
+
 } // namespace insight

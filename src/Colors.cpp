@@ -59,6 +59,31 @@ std::string colorPrefix(std::string const& code) {
     return std::string(kSectionSign) + code;
 }
 
+bool colorRgb(std::string const& code, float& r, float& g, float& b) {
+    // The palette of the codes above, in the same order.
+    static constexpr std::pair<char, unsigned> kPalette[] = {
+        {'0', 0x000000u}, {'1', 0x0000AAu}, {'2', 0x00AA00u}, {'3', 0x00AAAAu}, {'4', 0xAA0000u},
+        {'5', 0xAA00AAu}, {'6', 0xFFAA00u}, {'7', 0xAAAAAAu}, {'8', 0x555555u}, {'9', 0x5555FFu},
+        {'a', 0x55FF55u}, {'b', 0x55FFFFu}, {'c', 0xFF5555u}, {'d', 0xFF55FFu}, {'e', 0xFFFF55u},
+        {'f', 0xFFFFFFu}, {'g', 0xDDD605u}, {'h', 0xD9CCB8u}, {'i', 0xA9B4B7u}, {'j', 0x8F727Du},
+        {'m', 0xEE222Cu}, {'n', 0xC87363u}, {'p', 0xFFBF1Eu}, {'q', 0x13A045u}, {'s', 0x5FECFFu},
+        {'t', 0x577BFFu}, {'u', 0xB66CDDu}, {'v', 0xFF6A00u}, {'w', 0x8CB3FFu},
+    };
+    if (code.size() != 1) {
+        return false;
+    }
+    char const wanted = lower(code[0]);
+    for (auto const& [letter, rgb] : kPalette) {
+        if (letter == wanted) {
+            r = static_cast<float>((rgb >> 16) & 0xFFu) / 255.0f;
+            g = static_cast<float>((rgb >> 8) & 0xFFu) / 255.0f;
+            b = static_cast<float>(rgb & 0xFFu) / 255.0f;
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string colored(std::string const& code, std::string const& text) {
     if (text.empty()) {
         return {};

@@ -25,17 +25,20 @@
 #include "mc/client/game/IMinecraftGame.h"
 #include "mc/client/gui/controls/MeasureResult.h"
 #include "mc/client/renderer/actor/ItemRenderer.h"
+#include "mc/deps/core/file/PathView.h"
 #include "mc/deps/core/math/Color.h"
 #include "mc/deps/core/math/Vec3.h"
+#include "mc/deps/core/resource/ResourceLocation.h"
+#include "mc/deps/core/string/HashedString.h"
 #include "mc/deps/input/RectangleArea.h"
-#include "mc/deps/minecraft_renderer/resources/UIStructureVolumeOffscreenCaptureDescription.h"
-#include "mc/deps/minecraft_renderer/resources/UIThumbnailMeshOffscreenCaptureDescription.h"
+#include "mc/deps/minecraft_renderer/renderer/BedrockTextureData.h"
+#include "mc/deps/minecraft_renderer/renderer/IsMissingTexture.h"
+#include "mc/deps/minecraft_renderer/renderer/TexturePtr.h"
 #include "mc/locale/I18n.h"
 #include "mc/locale/Localization.h"
 #include "mc/math/vector/Vecs.h"
 #include "mc/network/GameConnectionInfo.h"
 #include "mc/world/actor/player/Player.h"
-#include "mc/world/containers/ContainerEnumName.h"
 #include "mc/world/containers/managers/models/ContainerManagerModel.h"
 #include "mc/world/containers/models/ContainerModel.h"
 #include "mc/world/inventory/network/ContainerScreenContext.h"
@@ -44,6 +47,7 @@
 #include "mc/world/level/dimension/Dimension.h"
 #include "mc/world/item/Item.h"
 
+#include "Colors.h"
 #include "Config.h"
 #include "ConfigUi.h"
 #include "EntityTarget.h"
@@ -91,6 +95,18 @@ bool parseHexColor(std::string const& hex, float& r, float& g, float& b) {
     g = gv / 255.0f;
     b = bv / 255.0f;
     return true;
+}
+
+// A vanilla UI texture ("textures/ui/heart", no extension) as the UI context hands it
+// out. The loader answers a path it does not know with its missing-texture
+// placeholder - a magenta/black square - so an unknown or unloaded sprite has to be
+// rejected here rather than drawn; the panel then keeps the numbers instead.
+std::shared_ptr<BedrockTextureData const> uiTexture(MinecraftUIRenderContext& context, char const* path) {
+    auto data = context.getTexture(ResourceLocation(Core::PathView(path)), false).mClientTexture;
+    if (!data || data->mIsMissingTexture == IsMissingTexture::Yes) {
+        return {};
+    }
+    return data;
 }
 
 // One colorized run of text (a § color code was resolved already).
@@ -749,6 +765,10 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
     if (forceRefresh || targetChanged || now - mLastSample >= samplePeriod) {
         mLastSample = now;
         mHadHit     = hit.has_value();
+        // The sprite rows belong to the entity branch below; a block or an empty
+        // sample has none, and a row left over from the previous subject would draw
+        // hearts onto the wrong panel.
+        mSprites = PanelSprites{};
         if (hit) {
             mLastHitPos  = hit->pos;
             mLastHitType = hit->typeName;
@@ -804,7 +824,47 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
                 info.y           = static_cast<int>(std::floor(epos.y));
                 info.z           = static_cast<int>(std::floor(epos.z));
             }
-            text       = renderEntityText(cfg, info, lang);
+            // Whether the hit points / armor are drawn by the panel itself (hearts,
+            // armor sprites or a bar) is decided here, from the config and the
+            // engine's own numbers: that drawing is a client-only affair (a
+            // server-side channel carries text), so the format layer is only told
+            // about it and reports back which line each row landed on.
+            std::string const style = cfg.entity.healthStyle; // bar | hearts | number, each with an optional "+number"
+            bool const wantsGraphic = style == "bar" || style == "bar+number" || style == "hearts"
+                                   || style == "hearts+number";
+            bool const heartsOnly = style == "hearts" || style == "hearts+number";
+            info.heartsPerRow     = std::clamp(cfg.entity.heartsPerRow, 1, 40);
+            if (hasHp) {
+                info.healthExact = entityHealthExact(*entity);
+                info.healthMax   = static_cast<float>(entity->getMaxHealth());
+                // The threshold is compared against the *scale*, not the current value,
+                // so the panel cannot flip between hearts and numbers while a fight
+                // goes on. A bar has no upper limit, so it does not need the check.
+                info.healthSprites = cfg.entity.health && wantsGraphic
+                                  && (!heartsOnly
+                                      || (info.healthMax > 0.0f && info.healthMax <= cfg.entity.heartsThreshold));
+            }
+            if (auto const armor = entityArmorValue(*entity); armor && *armor > 0) {
+                info.hasArmor     = true;
+                info.armorValue   = static_cast<float>(*armor);
+                info.armorSprites = cfg.entity.armor && wantsGraphic
+                                 && (!heartsOnly || info.armorValue <= cfg.entity.heartsThreshold);
+            }
+            text = renderEntityText(cfg, info, lang);
+
+            mSprites            = PanelSprites{};
+            mSprites.perRow     = info.heartsPerRow;
+            if (info.healthSprites) {
+                mSprites.healthLine = info.healthLine;
+                mSprites.health     = info.healthExact;
+                mSprites.healthMax  = info.healthMax;
+                mSprites.healthText = info.healthText;
+            }
+            if (info.armorSprites) {
+                mSprites.armorLine = info.armorLine;
+                mSprites.armor     = info.armorValue;
+                mSprites.armorText = info.armorText;
+            }
             mTargetKey = "e:" + eType + "#" + std::to_string(entity->getOrCreateUniqueID().rawID);
             mIconStack = ItemStack{}; // entities have no block icon
             std::string const entityState = info.entityType + "|" + info.entityName + "|" + std::to_string(info.health);
@@ -948,10 +1008,12 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
     // empties mText as soon as the subject is lost, so returning on that dropped the last lines
     // and the box in a single frame - a blink where the fade should be.
     if (!mText.empty()) {
-        mShownText = mText;
+        mShownText    = mText;
+        mShownSprites = mSprites; // the sprite rows belong to the text they came with
     }
     if (mNativeFade <= 0.001f) {
-        mShownText.clear();
+        mShownText = {};
+        mShownSprites = PanelSprites{};
         return;
     }
     if (mShownText.empty()) {
@@ -979,22 +1041,24 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
 
     // Laying the lines out here, with the engine's own measuring strategy, is what makes the
     // icon cell and the text agree: both are placed in UI units in this one function.
-    std::vector<std::string> lines;
-    std::vector<float>       widths;
-    float                    widest   = 0.0f;
-    float                    lineStep = 0.0f;
+    std::vector<std::string> const rawLines = util::splitLines(mShownText);
+    std::vector<float>             textWidths(rawLines.size(), 0.0f);
+    float                          widest     = 0.0f;
+    float                          lineStep   = 0.0f;
+    float                          textHeight = 0.0f;
     // The lines are handed to the engine's text renderer as they are, section-sign colour codes
     // included: feeding them through unmodified is how we find out whether the engine resolves
     // them itself. The old path stripped them here because it drew them as glyphs.
-    for (auto& raw : util::splitLines(mShownText)) {
-        lines.push_back(raw);
-        auto const measured = measure.measureText(fontRef, lines.back(), 4096.0f, 4096.0f, textData, caretData);
-        widths.push_back(measured.mSize->x);
-        widest   = std::max(widest, measured.mSize->x);
-        lineStep = std::max(lineStep, measured.mSize->y * 1.35f);
+    for (size_t i = 0; i < rawLines.size(); ++i) {
+        auto const measured = measure.measureText(fontRef, rawLines[i], 4096.0f, 4096.0f, textData, caretData);
+        textWidths[i] = measured.mSize->x;
+        widest        = std::max(widest, measured.mSize->x);
+        lineStep      = std::max(lineStep, measured.mSize->y * 1.35f);
+        textHeight    = std::max(textHeight, measured.mSize->y);
     }
     if (lineStep <= 0.0f) {
-        lineStep = fontScale * 12.0f;
+        lineStep   = fontScale * 12.0f;
+        textHeight = fontScale * 9.0f;
     }
 
     float const padX = 4.0f;
@@ -1005,16 +1069,114 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
     bool const  hasIcon  = !mIconStack.isNull() && static_cast<bool>(mIconStack.mItem);
     float const iconCol  = hasIcon ? iconSize + padX : 0.0f;
 
+    // ---- the sprite / bar rows ------------------------------------------------
+    // The subject's hit points and armor can be drawn with the game's own heart and
+    // armor sprites, or as a bar the UI renderer paints itself (EntityOptions::
+    // healthStyle). The sampler decided whether this subject qualifies and which line
+    // of the text each row sits on; what is left here is the geometry. A sprite the UI
+    // loader does not know comes back as its missing-texture placeholder instead of
+    // nothing, so a row whose sprites cannot be resolved keeps the number text that is
+    // already in the line - the same thing the server always shows. A bar needs no
+    // texture, so it is always available.
+    bool const  barMode    = cfg.entity.healthStyle == "bar" || cfg.entity.healthStyle == "bar+number";
+    // "bar+number" and "hearts+number" draw the number behind the graphic instead of
+    // replacing it with the graphic.
+    bool const  withNumber = cfg.entity.healthStyle == "bar+number" || cfg.entity.healthStyle == "hearts+number";
+    // One sprite is exactly one line of text tall, which is also how a bar is sized.
+    float const spriteSize = std::max(1.0f, std::round(textHeight));
+    int const   perRow     = std::clamp(mShownSprites.perRow, 1, 40);
+    float const barHeight  = std::max(3.0f, std::round(spriteSize * 0.5f));
+    // The width and height of a graphic row: in bar mode it is one bar wide (measured
+    // in hearts, so `heartsPerRow` sets how wide the bar is), otherwise one sprite per
+    // two points, with every further row overlapping the one below by half a sprite.
+    auto const graphicShape = [&](float points) {
+        if (barMode) {
+            return std::pair{static_cast<float>(perRow) * spriteSize, spriteSize};
+        }
+        int const   icons = std::max(1, static_cast<int>(std::ceil(points / 2.0f)));
+        int const   rows  = (icons + perRow - 1) / perRow;
+        float const w     = static_cast<float>(std::min(icons, perRow)) * spriteSize;
+        float const h     = spriteSize + static_cast<float>(rows - 1) * spriteSize * 0.5f;
+        return std::pair{w, h};
+    };
+    auto const heartBackground = uiTexture(context, "textures/ui/heart_background");
+    // The full hearts use the newer sprite the vanilla HUD draws; a pack that does not
+    // ship it falls back to the classic heart rather than to no hearts at all.
+    auto const heartFullNew = uiTexture(context, "textures/ui/heart_new");
+    auto const heartFullOld = uiTexture(context, "textures/ui/heart");
+    auto const heartFull    = heartFullNew ? heartFullNew : heartFullOld;
+    auto const heartHalf    = uiTexture(context, "textures/ui/heart_half");
+    auto const armorEmpty      = uiTexture(context, "textures/ui/armor_empty");
+    auto const armorFull       = uiTexture(context, "textures/ui/armor_full");
+    auto const armorHalf       = uiTexture(context, "textures/ui/armor_half");
+    bool const heartsAvailable = barMode || (heartBackground && heartFull && heartHalf);
+    bool const armorAvailable  = barMode || (armorEmpty && armorFull && armorHalf);
+
+    struct PanelLine {
+        std::string text;
+        bool        hearts   = false; // draw the hearts on this line instead of the text
+        bool        armor    = false; // draw the armor icons / bar on this line instead
+        bool        showText = true;  // ... and still write the line's text behind it
+        float       graphicWidth  = 0.0f;
+        float       graphicHeight = 0.0f; // what the graphic actually covers, for centring
+        float       textWidth     = 0.0f;
+        float       width         = 0.0f;
+        float       height        = 0.0f;
+    };
+    // The styles that put the number next to the graphic instead of replacing it
+    // ("bar+number", "hearts+number") write the format layer's "label number" text there.
+    float const spriteGap = spriteSize * 0.5f;
+    // The fixed scale of the armor row: armor has no attribute of its own, so it is drawn
+    // against the twenty points the vanilla bar tops out at.
+    constexpr float kArmorBarMax = 20.0f;
+    std::vector<PanelLine> lines;
+    lines.reserve(rawLines.size());
+    for (size_t i = 0; i < rawLines.size(); ++i) {
+        PanelLine line;
+        line.text   = rawLines[i];
+        line.hearts = heartsAvailable && static_cast<int>(i) == mShownSprites.healthLine;
+        line.armor  = armorAvailable && static_cast<int>(i) == mShownSprites.armorLine;
+        if (line.hearts || line.armor) {
+            // A sprite row covers the subject's whole scale, which is what keeps the hearts
+            // it has already lost visible as their background sprites.
+            float const capacity  = line.hearts ? std::max(mShownSprites.healthMax, 1.0f) : kArmorBarMax;
+            auto const [w, block] = graphicShape(capacity);
+            line.graphicWidth     = w;
+            line.graphicHeight    = barMode ? barHeight : block;
+            // The number behind the sprites is the format layer's own text for this row -
+            // never the line's, which may be a bar spelled out in block characters for a
+            // server-side channel.
+            line.text      = line.hearts ? mShownSprites.healthText : mShownSprites.armorText;
+            line.showText  = withNumber && !line.text.empty();
+            line.textWidth = 0.0f;
+            if (line.showText) {
+                line.textWidth =
+                    measure.measureText(fontRef, line.text, 4096.0f, 4096.0f, textData, caretData).mSize->x;
+            }
+            line.width  = w + (line.showText ? spriteGap + line.textWidth : 0.0f);
+            line.height = std::max(block, line.showText ? lineStep : 0.0f);
+        } else {
+            line.textWidth = textWidths[i];
+            line.width     = textWidths[i];
+            line.height    = lineStep;
+        }
+        widest = std::max(widest, line.width);
+        lines.push_back(std::move(line));
+    }
+    float contentHeight = 0.0f;
+    for (auto const& line : lines) {
+        contentHeight += line.height;
+    }
+
     glm::vec2 const screen = event.screenView().mSize;
     // Quantised target size, frozen per subject and grow-only: the box - and the icon sitting at
     // its left edge - must not follow every digit a ticking line changes. The subject decides
     // the target once; later updates of the same subject may only make it bigger.
     constexpr float kSizeStep = 8.0f;
     float const     contentW  = widest + 2.0f * padX + iconCol;
-    float const     contentH =
-        std::max(static_cast<float>(lines.size()) * lineStep, hasIcon ? iconSize : 0.0f) + 2.0f * padY;
-    float const wantW = std::ceil(contentW / kSizeStep) * kSizeStep;
-    float const wantH = std::ceil(contentH / kSizeStep) * kSizeStep;
+    float const     contentH  = std::max(contentHeight, hasIcon ? iconSize : 0.0f) + 2.0f * padY;
+    float const     wantW     = std::ceil(contentW / kSizeStep) * kSizeStep;
+    float const     wantH     = std::ceil(contentH / kSizeStep) * kSizeStep;
     if (mBoxKey != mTargetKey) {
         mBoxKey   = mTargetKey;
         mBoxWantW = wantW;
@@ -1146,26 +1308,153 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
     }
 
     // Text: one drawText per line inside the reserved area, flushed together, the way vanilla
-    // draws its labels. Follows the morphing box, like the icon above.
+    // draws its labels. Follows the morphing box, like the icon above. The two sprite rows are
+    // drawn in the band their line holds instead of text.
     float y = boxT + padY;
-    for (size_t i = 0; i < lines.size(); ++i) {
-        RectangleArea const area{
-            boxL + padX + iconCol,
-            boxL + padX + iconCol + widest + 1.0f,
-            y,
-            y + lineStep
-        };
+    // One line of text at a given left edge, in the reserved band: the plain rows use it
+    // at the panel's text column, a graphic row that carries a number right after the
+    // graphic.
+    auto const drawLine = [&](std::string const& text, float left, float top, float width) {
+        RectangleArea const area{left, left + width + 1.0f, top, top + lineStep};
         context.drawText(
             font,
             area,
-            std::string{lines[i]},
+            std::string{text},
             textColor,
             mNativeFade,
             ::ui::TextAlignment::Left,
             textData,
             caretData
         );
-        y += lineStep;
+    };
+    for (auto const& line : lines) {
+        if (line.hearts || line.armor) {
+            float const points = line.hearts ? mShownSprites.health : mShownSprites.armor;
+            // A bar is filled against the subject's own scale; armor has no attribute of
+            // its own, so it is filled against the 20 points the vanilla bar tops out at.
+            float const full       = line.hearts ? std::max(mShownSprites.healthMax, 1.0f) : kArmorBarMax;
+            float const graphicTop = y + (line.height - line.graphicHeight) * 0.5f;
+            if (barMode) {
+                // The bar is painted by the UI renderer itself - a rounded dark track with
+                // the fill laid over it - so it needs no texture and no "|" characters. The
+                // fill takes its colour from the colour scheme (colors.health for the hit
+                // points, colors.value for the armor) like every other part of the panel;
+                // a row whose colour was cleared keeps the defaults.
+                float fillR = 0.85f;
+                float fillG = 0.25f;
+                float fillB = 0.25f;
+                if (!colorRgb(line.hearts ? cfg.colors.health : cfg.colors.value, fillR, fillG, fillB)) {
+                    fillR = 0.85f;
+                    fillG = 0.25f;
+                    fillB = 0.25f;
+                }
+                // The bar is only as wide as the bar: the number drawn behind it is not
+                // part of the fill.
+                float const barL  = boxL + padX + iconCol;
+                float const barW  = line.graphicWidth;
+                float const ratio = std::clamp(points / full, 0.0f, 1.0f);
+                roundedFill(
+                    barL,
+                    graphicTop,
+                    barL + barW,
+                    graphicTop + barHeight,
+                    mce::Color{0.0f, 0.0f, 0.0f, 1.0f},
+                    0.55f * mNativeFade,
+                    barHeight * 0.5f
+                );
+                float const innerWidth = (barW - 2.0f) * ratio;
+                if (innerWidth >= 1.0f) {
+                    roundedFill(
+                        barL + 1.0f,
+                        graphicTop + 1.0f,
+                        barL + 1.0f + innerWidth,
+                        graphicTop + barHeight - 1.0f,
+                        mce::Color{fillR, fillG, fillB, 1.0f},
+                        mNativeFade,
+                        std::max(0.0f, barHeight * 0.5f - 1.0f)
+                    );
+                }
+            } else {
+                // One icon per two points of the row's *scale*, not of what is left: the
+                // hearts the subject has lost stay on screen as their background sprites.
+                int const icons = std::max(1, static_cast<int>(std::ceil(full / 2.0f)));
+
+                // One flush per texture, the way the UI batches them: a flush carries a single
+                // material and one alpha, and that alpha is the panel's fade.
+                auto const drawIcons = [&](std::shared_ptr<BedrockTextureData const> const& texture,
+                                           std::vector<glm::vec2> const&                  positions) {
+                    if (!texture || positions.empty()) {
+                        return;
+                    }
+                    for (auto const& at : positions) {
+                        context.drawImage(
+                            *texture->mClientTexture,
+                            at,
+                            glm::vec2{spriteSize, spriteSize},
+                            glm::vec2{0.0f, 0.0f},
+                            glm::vec2{1.0f, 1.0f},
+                            false
+                        );
+                    }
+                    context.flushImages(
+                        mce::Color{1.0f, 1.0f, 1.0f, 1.0f},
+                        mNativeFade,
+                        HashedString{"ui_textured_and_glcolor"}
+                    );
+                };
+                // One row at a time, from the bottom up: a row sits half a sprite into the row
+                // above it, and the whole upper row - its background included - has to paint
+                // over that overlap, which only happens when a row is finished before the next
+                // one starts. Within a row the order is background, full, half, so a half heart
+                // is the background sprite with the half sprite laid over it.
+                int const rows = (icons + perRow - 1) / perRow;
+                for (int row = rows - 1; row >= 0; --row) {
+                    std::vector<glm::vec2> backgrounds;
+                    std::vector<glm::vec2> fulls;
+                    std::vector<glm::vec2> halves;
+                    backgrounds.reserve(static_cast<size_t>(perRow));
+                    for (int column = 0; column < perRow; ++column) {
+                        int const i = row * perRow + column;
+                        if (i >= icons) {
+                            break;
+                        }
+                        glm::vec2 const at{
+                            boxL + padX + iconCol + static_cast<float>(column) * spriteSize,
+                            graphicTop + static_cast<float>(row) * spriteSize * 0.5f
+                        };
+                        backgrounds.push_back(at);
+                        float const remaining = points - static_cast<float>(i) * 2.0f;
+                        if (remaining >= 2.0f) {
+                            fulls.push_back(at);
+                        } else if (remaining > 0.0f) {
+                            halves.push_back(at); // a half sprite is as fine as the display gets
+                        }
+                    }
+                    if (line.hearts) {
+                        drawIcons(heartBackground, backgrounds);
+                        drawIcons(heartFull, fulls);
+                        drawIcons(heartHalf, halves);
+                    } else {
+                        drawIcons(armorEmpty, backgrounds);
+                        drawIcons(armorFull, fulls);
+                        drawIcons(armorHalf, halves);
+                    }
+                }
+            }
+            // The "…+number" styles keep the line's own text behind the graphic.
+            if (line.showText) {
+                drawLine(
+                    line.text,
+                    boxL + padX + iconCol + line.graphicWidth + spriteGap,
+                    y,
+                    line.textWidth
+                );
+            }
+            y += line.height;
+            continue;
+        }
+        drawLine(line.text, boxL + padX + iconCol, y, widest);
+        y += line.height;
     }
     context.flushText(0.0f, std::nullopt);
 }

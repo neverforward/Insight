@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include "mc/deps/core/math/Vec3.h"
@@ -32,5 +33,16 @@ findLookEntity(BlockSource& region, Actor const* except, Vec3 const& from, Vec3 
 // of entity types is involved; when it returns false the HP placeholders stay
 // hidden for that target.
 [[nodiscard]] bool entityHasHealth(Actor const& actor);
+
+// Hit points as the engine stores them. The health attribute keeps the fraction
+// that the integer getHealth() rounds away, which is what entity.healthDecimals
+// shows ("19.5"); entities without the attribute report their integer value.
+[[nodiscard]] float entityHealthExact(Actor const& actor);
+
+// Armour points of a mob - the number the vanilla armour bar draws - or nullopt
+// for an entity that is not a mob (and therefore cannot wear armour). Read from
+// Mob::getArmorValue() rather than an attribute: Bedrock has no armour attribute
+// (SharedAttributes has no ARMOR entry), the virtual is where the engine keeps it.
+[[nodiscard]] std::optional<int> entityArmorValue(Actor const& actor);
 
 } // namespace insight
