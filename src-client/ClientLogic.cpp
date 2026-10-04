@@ -405,25 +405,22 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
         // for chests: a brewing stand screen keys its model differently, so its
         // panel kept showing the stale world copy (the "brewing stand never
         // updates" bug). The block's container tells us how many slots the model
-        // must have, which identifies it whatever it is called.
-        int blockSlots = -1;
+        // must have, which identifies it whatever it is called - and, more directly,
+        // a model that wraps that very container object is the block's own one.
+        Container const* blockContainer = nullptr;
         if (pos) {
             if (auto const* blockActor = screenContext.tryGetBlockActor()) {
-                if (auto const* container = blockContainerOf(blockActor)) {
-                    blockSlots = container->getContainerSize();
-                }
+                blockContainer = blockContainerOf(blockActor);
             }
-            if (blockSlots < 0) {
+            if (blockContainer == nullptr) {
                 // some screens (brewing stands) do not hand out their block actor;
-                // the block's own container still says how many slots the model
-                // must have, which is all that is needed to recognise it
+                // the world's own block entity still has the container
                 if (auto* region = client.getRegion()) {
-                    if (auto const* container = blockContainerOf(region->getBlockEntity(*pos))) {
-                        blockSlots = container->getContainerSize();
-                    }
+                    blockContainer = blockContainerOf(region->getBlockEntity(*pos));
                 }
             }
         }
+        int const blockSlots = blockContainer != nullptr ? blockContainer->getContainerSize() : -1;
         // Some screens spread the block's slots over several models: a brewing
         // stand has one for the fuel, one for the input and one for the results
         // (brewing_fuel_item / brewing_input_item / brewing_result_items). Their
@@ -468,7 +465,18 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                 splitFilled += filled;
                 splitTotal  += total;
             }
-            bool preferred = key == "container_items" || (blockSlots > 0 && size == blockSlots);
+            // The player's own inventory models live in this same map, and the main
+            // inventory has exactly as many slots as a chest (27), so matching by slot
+            // count alone picked the player's items as soon as the screen had been
+            // opened - and the snapshot then kept the panel on them. The model's own
+            // category says which side it belongs to, so those models are never
+            // candidates; a model that wraps the block's very container is the best
+            // candidate of all (a brewing stand's three models all wrap it).
+            bool const ownContainer = blockContainer != nullptr && model->_getContainer() == blockContainer;
+            bool const playerInventory = model->mContainerCategory == ContainerCategory::PlayerInventory;
+            bool const preferred =
+                ownContainer
+                || (!playerInventory && (key == "container_items" || (blockSlots > 0 && size == blockSlots)));
             if (dump) {
                 logger.debug(
                     "[ctr]   model '{}' size={} filled={}{}",

@@ -110,6 +110,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A block container's contents no longer turn into the player's own inventory once its screen
+  has been opened. The screen's models map holds the player's inventory models next to the block's,
+  and the player's main inventory has exactly as many slots as a chest (27), so matching by slot
+  count picked the wrong model - and the snapshot it wrote then kept the panel on it, because a
+  snapshot is only dropped once it agrees with the world copy again. Models whose category is the
+  player inventory are never candidates now, and a model that wraps the block's own container (which
+  is how a brewing stand's three models are found) is preferred outright.
 - A message-only text packet - what the `tip` channel sends - now carries a fully filled payload:
   the localize flag, the filtered message and the sender's xuid and platform id, instead of
   nothing but the message body, which the client can reject as a malformed packet.
