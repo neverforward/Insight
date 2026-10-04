@@ -258,6 +258,60 @@ struct BlockExtrasConfig {
     bool misc = true; // remaining block states (composter, cake, sea pickles, ...)
 };
 
+// Extra info adapters that only mean something for an entity (the block ones are in
+// BlockExtrasConfig). `extras.enabled` still gates all of them; every adapter here has
+// its own switch on top of that. What a target does not have contributes nothing - a
+// sheep has no owner line, an adult animal no cooldown - so a switch never leaves an
+// empty line behind.
+struct EntityExtrasConfig {
+    // Who tamed this animal, by name ("Owner Steve"). Only tamed animals have one.
+    bool owner = true;
+
+    // The mob's active status effects ("Effects Speed II 0:12 · Strength I 0:30"),
+    // read from the engine's own effect list. The name comes from the game's effect
+    // table and is localized; the level is the vanilla roman numeral.
+    bool effects = true;
+    // How many effects fit on that one line; the rest are counted as "+n". 0 = all.
+    int effectsLimit = 4;
+
+    // Time left on an animal's breeding timer, whenever one is running: the love
+    // timer of a fed animal, or the cooldown after it bred.
+    bool breeding = true;
+
+    // How long a zombie villager still needs to turn into a villager ("Converting
+    // 2:31"); shown only while it is actually converting.
+    bool conversion = true;
+
+    // Armour worn by a pet or a mount - a wolf's wolf armour, a horse's horse
+    // armour, the body slot in general - which is *not* one of the four humanoid
+    // armour slots the equipment lines report:
+    //   "all"     - show it whenever it is worn
+    //   "damaged" - only once it has taken damage (durability below its maximum)
+    //   "off"     - never
+    std::string petArmor = "all";
+
+    // A horse's own numbers: coat and markings, whether it is saddled, and the raw
+    // movement speed / jump strength attribute values, which are what every other
+    // tool reports as well.
+    bool horse = true;
+
+    // An armour stand's pose index, when it is not the default pose. The engine
+    // exposes the index, not the pose names ("Athena", ...), so the index is shown.
+    bool armorStand = true;
+
+    // A villager's profession and trade level ("Profession Librarian · Level 2").
+    // Both are synced actor data - the client's own render controller reads the same
+    // two values - and the profession name comes from the game's own
+    // "entity.villager.*" translation keys, so it follows the player's language.
+    bool villager = true;
+
+    // Whether a copper golem has been waxed. This one lives in the entity's property
+    // subsystem, and the game declares that property as *not* synced to clients: on a
+    // client install it therefore reads its default and contributes no line at all,
+    // while the server build, which owns the state, shows it.
+    bool waxed = true;
+};
+
 struct Config {
     // Config schema version. IMPORTANT: bump this whenever a field is added,
     // removed or renamed. LeviLamina only merges the current defaults into an
@@ -270,8 +324,9 @@ struct Config {
     // overrides in favour of the per-field switches in DisplayOptions (display.*).
     // 5 -> 6: the per-field colours (ColorOptions, `colors`). 6 -> 7: how the entity
     // panel draws the hit points and the armor row (entity.healthStyle, its
-    // threshold, row size and decimals, and entity.armor).
-    int version = 7;
+    // threshold, row size and decimals, and entity.armor). 7 -> 8: the entity extras
+    // (EntityExtrasConfig, `entityExtras`).
+    int version = 8;
 
     // Master switch for the whole mod.
     bool enabled = true;
@@ -311,6 +366,9 @@ struct Config {
 
     // Per-block-type extra info (see BlockExtrasConfig).
     BlockExtrasConfig extras;
+
+    // Per-entity extra info (see EntityExtrasConfig).
+    EntityExtrasConfig entityExtras;
 
     // --- platform specific options -------------------------------------
     ServerOptions server;

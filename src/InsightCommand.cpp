@@ -137,6 +137,16 @@ std::vector<std::string> const& optionNames() {
         "extras.candle",
         "extras.respawnAnchor",
         "extras.misc",
+        "entityExtras.owner",
+        "entityExtras.effects",
+        "entityExtras.effectsLimit",
+        "entityExtras.breeding",
+        "entityExtras.conversion",
+        "entityExtras.petArmor",
+        "entityExtras.horse",
+        "entityExtras.armorStand",
+        "entityExtras.villager",
+        "entityExtras.waxed",
     };
     return names;
 }

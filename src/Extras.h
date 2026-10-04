@@ -68,13 +68,17 @@ void setLiveEntityContainerSnapshot(int64_t actorId, int filled, int total, int 
 [[nodiscard]] std::string describeBlockStateNames(IConstBlockSource const& region, BlockPos const& pos);
 
 // Extra lines for the entity under the crosshair: container minecarts / boats
-// ("物品 n/m") and armor stand equipment. {light}/{direction} are separate
-// placeholders and are not repeated here.
+// ("物品 n/m"), paintings, the worn equipment, and the entity adapters of
+// EntityExtrasConfig (owner, status effects, breeding timer, conversion time, pet
+// armour, mount numbers, an armour stand's pose). {light}/{direction} are separate
+// placeholders and are not repeated here. `opt.enabled` gates every adapter, block
+// and entity alike.
 [[nodiscard]] std::string buildEntityExtras(
     IConstBlockSource const& region,
     Actor const&             actor,
     std::string const&       langCode,
-    BlockExtrasConfig const& opt
+    BlockExtrasConfig const& opt,
+    EntityExtrasConfig const& entityOpt
 );
 
 } // namespace insight

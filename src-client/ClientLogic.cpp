@@ -921,7 +921,7 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             );
             info.distance = entityDist;
             info.dimName  = clientDimName(region);
-            info.extras   = buildEntityExtras(region, *entity, lang, cfg.extras);
+            info.extras   = buildEntityExtras(region, *entity, lang, cfg.extras, cfg.entityExtras);
             // The entity panel has its own layout (renderEntityText): the entity's own
             // yaw as the facing, its position, and hit points - but no light level and
             // no emission, which describe a world position, not the entity.

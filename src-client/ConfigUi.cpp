@@ -293,6 +293,14 @@ bool const* findBoolOption(std::string const& option) {
         {"extras.candle",          &cfg.extras.candle          },
         {"extras.respawnAnchor",   &cfg.extras.respawnAnchor   },
         {"extras.misc",            &cfg.extras.misc            },
+        {"entityExtras.owner",      &cfg.entityExtras.owner     },
+        {"entityExtras.effects",    &cfg.entityExtras.effects   },
+        {"entityExtras.breeding",   &cfg.entityExtras.breeding  },
+        {"entityExtras.conversion", &cfg.entityExtras.conversion},
+        {"entityExtras.horse",      &cfg.entityExtras.horse     },
+        {"entityExtras.armorStand", &cfg.entityExtras.armorStand},
+        {"entityExtras.villager",   &cfg.entityExtras.villager  },
+        {"entityExtras.waxed",      &cfg.entityExtras.waxed     },
     };
     for (auto const& entry : table) {
         if (option == entry.name) {
@@ -418,6 +426,12 @@ std::string currentValueText(Row const& row, std::string const& locale) {
     if (row.option == "entity.heartsPerRow") {
         return std::to_string(cfg.entity.heartsPerRow);
     }
+    if (row.option == "entityExtras.effectsLimit") {
+        return std::to_string(cfg.entityExtras.effectsLimit);
+    }
+    if (row.option == "entityExtras.petArmor") {
+        return cfg.entityExtras.petArmor;
+    }
     if (row.option == "offsetX") {
         return util::trimNumber(cfg.client.offsetX, 2);
     }
@@ -500,6 +514,8 @@ std::string choiceLabel(std::string const& value, std::string const& locale) {
         {"hearts",        "Hearts"       },
         {"hearts+number", "Hearts + number"},
         {"number",        "Number"       },
+        {"all",           "All"          },
+        {"damaged",       "Damaged"      },
     };
     // shipped message files are named after their locale: show them natively
     static constexpr std::pair<char const*, char const*> kNativeNames[] = {
@@ -1122,6 +1138,24 @@ void ConfigUi::draw() {
                     {"Block states", "extras.misc", Kind::Bool, 0.0f, 0.0f, false, {}},
             },
                 200
+            );
+            drawSection(
+                "Extras: entities",
+                {
+                    {"Owner",           "entityExtras.owner",        Kind::Bool, 0.0f,  0.0f, false, {}                  },
+                    {"Status effects",  "entityExtras.effects",      Kind::Bool, 0.0f,  0.0f, false, {}                  },
+                    {"Effect limit",    "entityExtras.effectsLimit", Kind::Int,  0.0f, 38.0f, false, {}                  },
+                    {"Breeding timer",  "entityExtras.breeding",     Kind::Bool, 0.0f,  0.0f, false, {}                  },
+                    {"Conversion time", "entityExtras.conversion",   Kind::Bool, 0.0f,  0.0f, false, {}                  },
+                    {"Pet armor",       "entityExtras.petArmor",     Kind::Enum, 0.0f,  0.0f, false, {"all",
+                                                                                                          "damaged",
+                                                                                                          "off"}             },
+                    {"Mount numbers",   "entityExtras.horse",        Kind::Bool, 0.0f,  0.0f, false, {}                  },
+                    {"Armor stand pose","entityExtras.armorStand",   Kind::Bool, 0.0f,  0.0f, false, {}                  },
+                    {"Villager trade",  "entityExtras.villager",     Kind::Bool, 0.0f,  0.0f, false, {}                  },
+                    {"Waxed golem",     "entityExtras.waxed",        Kind::Bool, 0.0f,  0.0f, false, {}                  },
+            },
+                230
             );
             ImGui::EndTabItem();
         }

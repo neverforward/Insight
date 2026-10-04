@@ -56,6 +56,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reopens. The groups are **General** (the master switch, distance, interval, the channel, ...),
   **Block lines**, **Entity lines**, **Colours**, **Extras: every block**, **Extras: block entities**
   and **Extras: redstone**, which covers every option that means something on a server.
+- The entity panel grew its own group of extra lines, `entityExtras` (`extras.enabled` gates them like
+  the block ones), each showing what the subject actually has and staying silent otherwise:
+  the **owner** of a tamed animal, the active **status effects** with their remaining time on one line
+  (`effectsLimit` caps how many fit), a **breeding** timer (the love timer or the cooldown after
+  breeding), a zombie villager's **conversion** time, the **pet armour** in the body slot
+  (`all` / `damaged` / `off` - the humanoid armour slots were already reported), a **mount**'s coat and
+  markings, movement speed, jump strength and saddle, an **armour stand**'s pose index, a
+  **villager**'s profession and trade level, and whether a **copper golem** is waxed.
+- A horse's coat and markings are named in the order the game's own horse render controller lists its
+  textures in (`Array.base` / `Array.markings`, indexed by `query.variant` / `query.mark_variant`), so
+  the same seven colours and five markings the vanilla horse models use; a horse with no markings shows
+  the coat alone.
+- Where those values come from: the status effects, breeding and conversion state are the engine's own
+  components, the timers are ticks; a villager's profession and trade level are synced actor data - the
+  game's own villager render controller reads the same two values as `query.variant` and
+  `query.trade_tier` - and the profession names are the game's `entity.villager.*` translation keys, so
+  they follow the player's language. Two of them are server-side state that the game never syncs to a
+  client: the copper golem's waxed flag (an entity *property* the game declares as not client-synced) and
+  a zombie villager's conversion *countdown* (only the "it is converting" flag is synced), so those lines
+  appear on a server install and stay empty on a client.
+- Two of the requested entity adapters are **not** implemented, because the engine does not expose what
+  they need: a baby's **growth time** (its component carries a raw age counter with no total and no
+  documented unit or sign, and it is not synced) and a **villager's profession as a name on the old
+  villager type** (only the V2 villager's variant is the profession; the old one has no such field).
+  The **next entity drop** is deliberately left out as well: asking the loot table would consume the
+  world's random number generator, which is not something a display mod may do.
 
 ### Changed
 
@@ -63,6 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically and keeps every value it already has.
 - Higher `Config` schema version (7) as well, for the entity display options above; an existing file
   is merged automatically.
+- Higher `Config` schema version (8) for the `entityExtras` group above; an existing file is merged
+  automatically.
 - In the `+number` styles the client writes the row's own "label number" text behind the sprites,
   never the line itself: that line may carry a bar spelled out in block characters for a server
   channel, which must not appear next to the sprites.
@@ -93,6 +121,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the client reports for chat, signs, the anvil and the creative search field alike. While the
   configuration screen itself is up its own keys are left alone too: a rebind capture or an edited
   text field no longer gets its key eaten by the hotkey.
+- The status effect line shows **every** effect again, with the right level. The engine's effect list
+  carries slots it has no name for, and counting those made the line stop after the first effect and
+  report the rest as `+n`; only the entries that produced a name are counted now. The name and the
+  level come from the game's own effect table (`potion.*`, so the same wording the game itself uses)
+  rather than from the engine's display name, which carries the level on one side and none on the
+  other - which is what turned a level II speed into `Speed II II`.
+- The status effect line is a **server-side** one now. A client is never told more than the latest
+  effect of another creature - measured: the server's list holds every effect in its id slot, a
+  client's holds that single latest one - so on a client the line could only show one effect and then
+  disappear with it. Rather than extrapolate the rest, the line is left to the side that owns the data.
+- A horse's numbers are the ones a player can judge: **speed in blocks per second** (the attribute
+  times 42.16) and the **jump height in blocks** (the jump strength through the cubic the game's horse
+  jump uses), instead of the raw per-tick engine values - `Speed 7.34 blocks/s · Jump height 3.25 blocks`.
+- A villager's trade level is one higher than the raw value: the game counts the tiers from zero, so
+  the number now matches the Novice / Apprentice / ... the trade screen shows.
+- A zombie villager's conversion time is read from the transformation countdown the game itself runs
+  (`TransformationComponent::mDelayTicks`): the per-class field is zero on this build and the
+  "converting" flag is not set on every converting villager, so the line never appeared. A client, which
+  is never told the countdown, shows the state on its own when it is told at all.
+- The copper golem's waxed line reads **yes / no** instead of the on/off of a switch, and it is a
+  server-side line: the game declares that property as not client-synced, so a client would only ever
+  read the default and say "no" about a golem that is in fact waxed.
+- The breeding line appears for a client as well: the counters are server-side state, so the line falls
+  back to the "in love" flag the client *is* told (`Breeding In love`) instead of staying empty because
+  the component is missing there.
 
 ## [0.3.1] - 2026-10-02
 

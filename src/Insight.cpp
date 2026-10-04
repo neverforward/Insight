@@ -461,6 +461,19 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
         return finish({true, tr(localeCode, "set {0} = {1}", "entity.heartsPerRow", std::to_string(v))});
     }
 
+    // --- entity extras: the per-entity adapters (EntityExtrasConfig) -------
+    if (lower == "entityextras.effectslimit") {
+        long v = 0;
+        if (!parseInt(value, v) || v < 0 || v > 38) {
+            return {false, tr(localeCode, "Invalid entityExtras.effectsLimit (0..38)")};
+        }
+        gConfig.entityExtras.effectsLimit = static_cast<int>(v);
+        return finish({true, tr(localeCode, "set {0} = {1}", "entityExtras.effectsLimit", std::to_string(v))});
+    }
+    if (lower == "entityextras.petarmor") {
+        return setEnum(gConfig.entityExtras.petArmor, "entityExtras.petArmor", {"all", "damaged", "off"});
+    }
+
     // --- display switches: one per field the panel can show (DisplayOptions).
     // These are what replaced the format / entityFormat text templates. ---
     {
@@ -644,6 +657,29 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
         }) {
             // the option arrives lower-cased; the table keeps the canonical
             // spelling so logs and messages show it as documented
+            if (lower == util::toLower(entry.name)) {
+                return setBool(*entry.target, entry.name);
+            }
+        }
+    }
+
+    // --- entity extras: one switch per adapter (see EntityExtrasConfig). The
+    // master switch for these is `extras.enabled`, the block one. ---
+    {
+        struct EntityExtraSwitch {
+            char const* name;
+            bool*       target;
+        };
+        for (auto const& entry : {
+                 EntityExtraSwitch{"entityExtras.owner",      &gConfig.entityExtras.owner     },
+                 EntityExtraSwitch{"entityExtras.effects",    &gConfig.entityExtras.effects   },
+                 EntityExtraSwitch{"entityExtras.breeding",   &gConfig.entityExtras.breeding  },
+                 EntityExtraSwitch{"entityExtras.conversion", &gConfig.entityExtras.conversion},
+                 EntityExtraSwitch{"entityExtras.horse",      &gConfig.entityExtras.horse     },
+                 EntityExtraSwitch{"entityExtras.armorStand", &gConfig.entityExtras.armorStand},
+                 EntityExtraSwitch{"entityExtras.villager",   &gConfig.entityExtras.villager  },
+                 EntityExtraSwitch{"entityExtras.waxed",      &gConfig.entityExtras.waxed     },
+         }) {
             if (lower == util::toLower(entry.name)) {
                 return setBool(*entry.target, entry.name);
             }

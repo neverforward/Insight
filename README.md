@@ -94,7 +94,7 @@ written through the same path as `/insight set`, so the range checks, the valida
 save behave exactly like the command - a value that is out of range says why in chat, and the menu
 reopens so another group can be edited. The groups are **General** (the master switch, distance,
 interval, the channel, ...), **Block lines**, **Entity lines**, **Colours**, **Extras: every block**,
-**Extras: block entities** and **Extras: redstone**.
+**Extras: block entities**, **Extras: redstone** and **Extras: entities**.
 
 The client-only options are deliberately absent from the menu - `showOverlay`, the anchor, the offsets,
 the font and appearance settings, the language and the key bindings do nothing on a server.
@@ -105,7 +105,7 @@ is translated.
 
 ```jsonc
 {
-    "version": 7,                  // schema version; older files are merged automatically, and the
+    "version": 8,                  // schema version; older files are merged automatically, and the
                                    // templates of a version <= 4 file become display / entity
                                    // switches (see below)
 
@@ -188,6 +188,19 @@ is translated.
         "candle": true,            // candles: how many, lit or not
         "respawnAnchor": true,     // charge level
         "misc": true               // remaining block states
+    },
+
+    "entityExtras": {              // extra lines that only mean something for an entity (gated by extras.enabled too)
+        "owner": true,             // tamed animal: who owns it
+        "effects": true,           // active status effects, one line
+        "effectsLimit": 4,         // how many of them fit on it (0 = all)
+        "breeding": true,          // love / breeding cooldown timer
+        "conversion": true,        // zombie villager: time left to turn
+        "petArmor": "all",         // pet / body armour: all | damaged | off
+        "horse": true,             // horse: movement speed, jump strength, saddle
+        "armorStand": true,        // armour stand: its pose index
+        "villager": true,          // villager: profession and trade level
+        "waxed": true              // copper golem: waxed (server-side; the game does not sync that property)
     },
 
     "entityEnabled": true,         // also show entities under the crosshair
@@ -395,10 +408,10 @@ not shown any more - so it is ignored along with them.
 
 The extra lines are appended while the panel's own switch is on - `display.extras` for a block,
 `entity.extras` for an entity - and `extras.enabled` gates every adapter on **both** sides, so it
-silences block and entity extras alike. The entity panel is not a separate set of adapters: it reuses
-the same `extras.*` switches (a container entity such as a chest or hopper minecart is `extras.chest`,
-a painting `extras.painting`, and the worn equipment of players, armor stands and armored mobs is
-`extras.misc`). Every adapter below has a switch of its own:
+silences block and entity extras alike. Some entity adapters are shared with the block side - a
+container entity such as a chest or hopper minecart is `extras.chest`, a painting `extras.painting`,
+and the worn equipment of players, armor stands and armored mobs is `extras.misc` - and the entity's
+own ones live under `entityExtras` (see below). Every adapter below has a switch of its own:
 
 | Switch | Contents |
 | --- | --- |
@@ -430,6 +443,28 @@ beacons, campfires, beds, enchanting tables). What they all show:
 - Banners: `Patterns n`; decorated pots: `Items <item> ×n` and `Sherds n/4`; shelves: `Items n/3`; item frames: `Displayed item <item>` and `Rotation N°`
 - Lecterns: `Book <item>`, `Page p/total`; signs: `Text <front>` and `Text (back) <back>`
 - Equipment of any entity that carries some (armor stands, players, armored mobs): `Helmet` / `Chestplate` / `Leggings` / `Boots`, `Main hand`, `Off hand`
+
+Entities have their own switches as well, under `entityExtras` (the same `extras.enabled` master switch
+gates them). Each one stays silent when the subject has nothing to say:
+
+| Switch | Contents |
+| --- | --- |
+| `entityExtras.owner` | the owner of a tamed animal: `Owner Steve` (a player owner is named by its real name, any other by its name tag; an owner that is not loaded shows nothing) |
+| `entityExtras.effects` | the active status effects on one line, each as `name level time`: `Effects Speed II 0:12 · Strength 0:30`. The names are the game's own effect names and the level is a roman numeral only above the first, exactly the way the vanilla effect list writes them. `entityExtras.effectsLimit` is how many fit (the rest are counted as `· +n`, `0` lists them all). This line is **server-side only**: a client is never told more than the latest effect of another creature, so it would show one effect and then nothing |
+| `entityExtras.breeding` | an animal's breeding timer: `Breeding 0:30` for the love timer of a fed animal or the cooldown after it bred. Those counters are the server's, so a client - which is only told *that* an animal is in love - shows `Breeding In love` |
+| `entityExtras.conversion` | a zombie villager's conversion time: `Converting 2:31`, read from the transformation countdown the game itself runs while something is turning. That countdown never reaches a client, so a server shows the time and a client the state alone |
+| `entityExtras.petArmor` | the armour in the body slot (wolf armour, nautilus armour, a carpet), which is not one of the four humanoid slots: `Pet armor Wolf Armor 12/25`. `all` shows whatever is worn, `damaged` only pieces that have been worn down, `off` never |
+| `entityExtras.horse` | a horse, donkey, mule or skeletal/zombie horse. A horse also gets what it looks like, in the game's own colour order: `Coat White · Markings White dots` (the markings are skipped when it has none). Every mount then gets what a player can judge - `Speed 7.34 blocks/s · Jump height 3.25 blocks` (the movement speed attribute times 42.16, and the jump strength through the cubic the game's jump uses) - plus `· Saddled` when it carries a saddle |
+| `entityExtras.armorStand` | an armour stand's pose index when it is not the default pose: `Pose 5`. The engine exposes the index, not the pose names, so the number is what is shown |
+| `entityExtras.villager` | a villager's trade table: `Profession Librarian · Level 2`. The names come from the game's own `entity.villager.*` messages, so they follow the player's language, and the level is the one the trade screen shows (the raw tier counts from zero) |
+| `entityExtras.waxed` | a copper golem's waxed state: `Waxed yes` / `Waxed no`. The game treats that property as server-only - it is deliberately not synced to clients - so this line appears on a server install, and a client shows none at all rather than claiming "no" about a golem that is waxed |
+
+Not every requested entity adapter could be built: a baby's **growth time** has no readable total (the
+component carries a raw age counter with no documented unit, sign or maximum, and it is not synced),
+and a **villager's profession** only exists on the V2 villager, whose variant *is* the profession - the
+older villager type has no such field, so it is left alone rather than labelled from the wrong table.
+The **next entity drop** is deliberately absent: asking the loot table would consume the world's random
+number generator, which a display mod must not do.
 
 **Data completeness**: container and block-entity info is complete on the **server and in local
 single-player**; a client connected to a remote server cannot read other players' containers, so

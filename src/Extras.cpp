@@ -1,10 +1,12 @@
 #include "Extras.h"
 
+#include <algorithm>
 #include <array>
 #include <bitset>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <map>
@@ -16,11 +18,24 @@
 
 #include "mc/deps/core/string/HashedString.h"
 #include "mc/deps/shared_types/legacy/actor/ArmorSlot.h"
+#include "mc/entity/components/ArmorStandPoseIndexComponent.h"
+#include "mc/entity/components_json_legacy/BreedableComponent.h"
 #include "mc/entity/components_json_legacy/ContainerComponent.h"
+#include "mc/entity/components_json_legacy/TransformationComponent.h"
 #include "mc/world/Container.h"
 #include "mc/world/actor/Actor.h"
+#include "mc/world/actor/Mob.h"
 #include "mc/world/actor/Motif.h"
 #include "mc/world/actor/Painting.h"
+#include "mc/world/actor/monster/ZombieVillager.h"
+#include "mc/world/actor/player/Player.h"
+#include "mc/world/actor/state/PropertyComponent.h"
+#include "mc/world/attribute/AttributeInstance.h"
+#include "mc/world/attribute/AttributeInstanceConstRef.h"
+#include "mc/world/attribute/SharedAttributes.h"
+#include "mc/world/effect/MobEffectInstance.h"
+#include "mc/world/effect/MobEffect.h"
+#include "mc/world/effect/MobEffectIds.h"
 #include "mc/world/item/Item.h"
 #include "mc/world/item/ItemStackBase.h"
 #include "mc/world/level/block/Block.h"
@@ -167,6 +182,194 @@ std::string valueLine(std::string const& langCode, char const* labelKey, int val
 std::string textLine(std::string const& langCode, char const* labelKey, std::string const& value) {
     return labelText(langCode, labelKey) + " " + valueText(value);
 }
+
+// ---------------------------------------------------------------------------
+// entity adapters (EntityExtrasConfig): the small readers behind the owner,
+// effect, timer, pet armour, mount and armour stand lines.
+// ---------------------------------------------------------------------------
+
+// A countdown in ticks as "m:ss" - the timers an entity shows are minutes at most.
+std::string clockText(int ticks) {
+    int const seconds = std::max(0, ticks) / 20;
+    char      buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "%d:%02d", seconds / 60, seconds % 60);
+    return buffer;
+}
+
+// A roman numeral for an effect level, the way the vanilla effect list writes it.
+#ifndef INSIGHT_TARGET_CLIENT
+// The effect line is server-side only: a client is never sent more than the *latest*
+// effect of another creature (its list holds that one entry plus empty slots, where a
+// server holds the complete list - 19 slots with the real ones in their id places), so
+// on a client the line could only ever show one effect and then vanish with it. These
+// helpers are therefore compiled for the server alone.
+
+// A roman numeral for an effect level, the way the vanilla effect list writes it.
+std::string romanLevel(int level) {
+    static constexpr char const* kRoman[] = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
+    if (level >= 1 && level <= static_cast<int>(std::size(kRoman))) {
+        return kRoman[level - 1];
+    }
+    return std::to_string(level);
+}
+
+// Whether an engine effect slot carries a real effect: the list keeps a "no effect"
+// placeholder in every slot that is not in use, and that one has id 0.
+bool validEffectId(uint id) { return id != 0 && id < static_cast<uint>(MobEffectIds::Count); }
+
+// One status effect the way the vanilla effect list reads it: the engine's own
+// translation key for the effect ("potion.moveSpeed") resolved through the game's
+// language table, the level as a roman numeral when it is above the first, and the time
+// left. That key is what the game builds its own effect list from, so the wording is the
+// game's own; the engine's display name is only the fallback, because it carries the
+// level while this table does not. An entry the engine has no name for (its "no effect"
+// slot, or an effect the table does not know) returns nothing, and the caller counts
+// what came back rather than what it iterated.
+std::string effectValue(std::string const& langCode, MobEffectInstance const& effect) {
+    std::string name;
+    bool        named = false;
+    if (validEffectId(effect.mId)) {
+        auto& table = MobEffect::mMobEffects();
+        if (auto const& definition = table[static_cast<MobEffectIds>(effect.mId)]; definition != nullptr) {
+            std::string const key = *definition->mDescriptionId;
+            if (!key.empty()) {
+                name  = localizeKey(langCode, key);
+                named = true;
+            }
+        }
+    }
+    if (name.empty()) {
+        name = effect.getDisplayName();
+    }
+    if (name.empty()) {
+        return {};
+    }
+    std::string const level = named && effect.mAmplifier > 0 ? " " + romanLevel(effect.mAmplifier + 1) : std::string{};
+    return name + level + " " + clockText(effect.mDuration->mValue);
+}
+#endif
+
+// An attribute's raw value, or nothing when the entity has no such attribute at all.
+std::optional<float> attributeValue(Actor const& actor, Attribute const& attribute) {
+    if (auto const& instance = actor.getAttribute(attribute); instance.mPtr != nullptr) {
+        return instance.mPtr->mCurrentValue;
+    }
+    return std::nullopt;
+}
+
+// The height a horse's jump strength reaches, in blocks: the cubic the game's own
+// horse jump uses (the same curve the attribute is documented with).
+double jumpHeight(double strength) {
+    return -0.1817584952 * strength * strength * strength + 3.689713992 * strength * strength
+         + 2.128599134 * strength - 0.343930367;
+}
+
+// The pet armour slot: wolf / nautilus armour lives in the body slot, which is not
+// one of the four humanoid slots the equipment lines already report, so it gets its
+// own line. `mode` is EntityExtrasConfig::petArmor: "all" shows whatever is worn,
+// "damaged" only armour that has actually been worn down, "off" nothing. The value
+// is "name durability/max" for a damageable piece and just the name for the rest.
+std::string petArmorValue(Actor const& actor, std::string const& langCode, std::string const& mode) {
+    if (mode == "off") {
+        return {};
+    }
+    auto const& armor = actor.getArmor(SharedTypes::Legacy::ArmorSlot::Body);
+    if (armor.isNull()) {
+        return {};
+    }
+    int damage    = 0;
+    int maxDamage = 0;
+    if (armor.isDamageableItem() && armor.mItem) {
+        damage    = armor.getDamageValue();
+        maxDamage = armor.mItem->getMaxDamage();
+    }
+    if (mode == "damaged" && (maxDamage <= 0 || damage <= 0)) {
+        return {}; // "damaged only" and this piece is untouched
+    }
+    std::string value = localizeKey(langCode, armor.getDescriptionId());
+    if (maxDamage > 0) {
+        value += " " + std::to_string(maxDamage - damage) + "/" + std::to_string(maxDamage);
+    }
+    return value;
+}
+
+// The horse family, by the engine's own type ids: the speed / jump numbers only mean
+// something for these (the attribute exists for every mob).
+bool isHorse(Actor const& actor) {
+    return actor.isType(ActorType::Horse) || actor.isType(ActorType::Donkey) || actor.isType(ActorType::Mule)
+        || actor.isType(ActorType::SkeletonHorse) || actor.isType(ActorType::ZombieHorse);
+}
+
+// A horse's coat colour and markings, in exactly the order the game's own horse render
+// controller lists its textures in (Array.base / Array.markings, indexed by
+// query.variant / query.mark_variant) - which is the same order as HorseVariant /
+// HorseMarkings. Marking 0 is "none" and is skipped rather than spelled out.
+std::string horseCoatName(std::string const& langCode, int variant) {
+    static constexpr char const* kCoats[] = {
+        "White", "Creamy", "Chestnut", "Brown", "Black", "Gray", "Dark brown",
+    };
+    if (variant < 0 || variant >= static_cast<int>(std::size(kCoats))) {
+        return {};
+    }
+    return tr(langCode, kCoats[variant]);
+}
+
+std::string horseMarkingsName(std::string const& langCode, int markings) {
+    static constexpr char const* kMarkings[] = {
+        nullptr, "White details", "White fields", "White dots", "Black dots",
+    };
+    if (markings <= 0 || markings >= static_cast<int>(std::size(kMarkings)) || kMarkings[markings] == nullptr) {
+        return {};
+    }
+    return tr(langCode, kMarkings[markings]);
+}
+
+// A synced actor-data integer. This is the channel the client and the server share:
+// the entity's *properties* are not all synced, actor data is what the client's own
+// render controllers read as well.
+std::optional<int> syncedInt(Actor const& actor, ActorDataIDs id) {
+    auto const  key  = static_cast<ushort>(id);
+    auto const& data = actor.mEntityData; // the storage wraps the wrapper: use ->
+    if (!data->hasData(key)) {
+        return std::nullopt;
+    }
+    return data->getInt(key);
+}
+
+// The villager's profession, from the synced actor data the client's own villager
+// render controller reads (variable.profession_index = query.variant). The names are
+// the game's own "entity.villager.*" keys, so they follow the player's language; the
+// last entry (the nitwit) has no key in the game's language files and carries its own.
+std::string villagerProfession(Actor const& actor, std::string const& langCode) {
+    static constexpr char const* kProfessions[] = {
+        "unskilled", "farmer", "fisherman", "shepherd", "fletcher", "librarian", "cartographer",
+        "cleric",    "armor",  "weapon",    "tool",     "butcher",  "leather",     "mason",
+    };
+    auto const profession = syncedInt(actor, ActorDataIDs::Variant);
+    if (!profession || *profession < 0 || *profession > 14) {
+        return {};
+    }
+    if (*profession == 14) {
+        return tr(langCode, "Nitwit");
+    }
+    std::string const key  = std::string("entity.villager.") + kProfessions[*profession];
+    std::string const name = localizeKey(langCode, key);
+    return name == key ? std::string(kProfessions[*profession]) : name;
+}
+
+// Whether a copper golem is waxed. The engine has no member, component or actor-data
+// id for it - the state is an entity *property*, which the game's own JSON declares as
+// "minecraft:is_waxed". A client is never sent that property, so this whole reader is
+// server-side (see the caller).
+#ifndef INSIGHT_TARGET_CLIENT
+bool copperGolemWaxed(Actor const& actor) {
+    auto const properties = actor.getEntityContext().tryGetComponent<PropertyComponent>();
+    if (!properties) {
+        return false;
+    }
+    return properties->tryGetBool(HashedString::computeHash("minecraft:is_waxed")).value_or(false);
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // Debug diagnostics: these run on every sampling round, so they are emitted
@@ -1426,10 +1629,11 @@ std::string buildBlockExtras(
 }
 
 std::string buildEntityExtras(
-    IConstBlockSource const& region,
-    Actor const&             actor,
-    std::string const&       langCode,
-    BlockExtrasConfig const& opt
+    IConstBlockSource const&  region,
+    Actor const&              actor,
+    std::string const&        langCode,
+    BlockExtrasConfig const&  opt,
+    EntityExtrasConfig const& entityOpt
 ) {
     // kept for signature symmetry with buildBlockExtras(); entity extras only
     // read actor components, so no block sampling happens here.
@@ -1535,6 +1739,190 @@ std::string buildEntityExtras(
 
     // ---- {light}/{direction} are separate placeholders: they are not
     //      repeated here (see describeBlockLight / describeBlockFacing) ----
+
+    // ---- tamed animal: who owns it ---------------------------------------
+    // The engine resolves the owner id to the actor itself whenever that actor is
+    // around, so no list of tameable types is involved. A player owner is asked for
+    // its real name (a player carries no name tag), any other owner for its tag; an
+    // owner that is not loaded at all contributes nothing rather than a placeholder.
+    if (entityOpt.owner) {
+        std::string name;
+        if (auto const* owner = actor.getPlayerOwner(); owner != nullptr) {
+            name = owner->getRealName();
+        } else if (auto const* owner = actor.getOwner(); owner != nullptr) {
+            name = owner->getNameTag();
+        }
+        if (!name.empty()) {
+            lines.push_back(textLine(langCode, "Owner", name));
+        }
+    }
+
+    // ---- active status effects (server side) ------------------------------
+    // One line, like the vanilla effect list reads: every effect's own name, its level
+    // and its remaining time, separated by a middot. Only a server has that list: the
+    // engine's array is indexed by effect id and keeps a "no effect" placeholder (id 0)
+    // in the slots that are not in use, which the loop filters out. A client is only
+    // ever sent the latest effect of another creature, so this line is deliberately not
+    // drawn there - one effect that then vanishes with it would be a lie, and guessing
+    // the rest is not something a panel should do.
+#ifndef INSIGHT_TARGET_CLIENT
+    if (entityOpt.effects) {
+        std::vector<std::string> values;
+        for (auto const& effect : actor.getAllEffects()) {
+            if (validEffectId(effect.mId)) {
+                if (auto const value = effectValue(langCode, effect); !value.empty()) {
+                    values.push_back(value);
+                }
+            }
+        }
+        if (!values.empty()) {
+            int const   limit = entityOpt.effectsLimit;
+            int const   total = static_cast<int>(values.size());
+            int const   shown = limit > 0 && total > limit ? limit : total;
+            std::string text;
+            for (int i = 0; i < shown; ++i) {
+                if (i) {
+                    text += " " + colored(Insight::cfg().colors.label, "·") + " ";
+                }
+                text += valueText(values[i]);
+            }
+            if (total > shown) {
+                text += " " + colored(Insight::cfg().colors.label, "·") + " "
+                      + valueText("+" + std::to_string(total - shown));
+            }
+            lines.push_back(labelText(langCode, "Effects") + " " + text);
+        }
+    }
+#endif
+
+    // ---- breeding timer ---------------------------------------------------
+    // Whichever timer is running: the love timer of an animal that was fed, or the
+    // cooldown left after it bred. Those counters are server-side state, so a client
+    // usually has no component to read at all - the "in love" flag is what it is told,
+    // and it is checked on its own so that the line appears there too.
+    if (entityOpt.breeding) {
+        int ticks = 0;
+        if (auto component = actor.getEntityContext().tryGetComponent<BreedableComponent>()) {
+            ticks = component->mLoveTimer > 0 ? component->mLoveTimer : component->mBreedCooldown;
+        }
+        if (ticks > 0) {
+            lines.push_back(textLine(langCode, "Breeding", clockText(ticks)));
+        } else if (actor.getStatusFlag(ActorFlags::Inlove)) {
+            lines.push_back(textLine(langCode, "Breeding", tr(langCode, "In love")));
+        }
+    }
+
+    // ---- zombie villager: conversion time ---------------------------------
+    // The countdown the game itself runs before it transforms the entity is what the
+    // line is about, and it is a component of its own - the "converting" flag is not
+    // set on every converting villager, and the old per-class field is zero on this
+    // build, so the component is read first and the class is only the fallback.
+    if (entityOpt.conversion) {
+        int ticks = 0;
+        if (auto component = actor.getEntityContext().tryGetComponent<TransformationComponent>()) {
+            ticks = component->mDelayTicks;
+        }
+        if (ticks <= 0 && (actor.isType(ActorType::ZombieVillager) || actor.isType(ActorType::ZombieVillagerV2))) {
+            ticks = static_cast<ZombieVillager const&>(actor).villagerConversionTime;
+        }
+        if (ticks > 0) {
+            lines.push_back(textLine(langCode, "Converting", clockText(ticks)));
+        } else if (actor.getStatusFlag(ActorFlags::Converting)) {
+            lines.push_back(labelText(langCode, "Converting"));
+        }
+    }
+
+    // ---- pet armour -------------------------------------------------------
+    if (auto const value = petArmorValue(actor, langCode, entityOpt.petArmor); !value.empty()) {
+        lines.push_back(textLine(langCode, "Pet armor", value));
+    }
+
+    // ---- mount numbers ----------------------------------------------------
+    // A horse gets two lines: what it looks like, and its numbers. The panel's first
+    // line already names the animal (Horse, Donkey, ...), so the coat line is about the
+    // colour only. The raw attributes mean nothing on their own - they are "engine
+    // units per tick" - so they are converted into what a player can judge: movement
+    // speed x 42.16 is blocks per second, and the jump strength goes through the same
+    // cubic the game's horse jump uses to become a height in blocks.
+    if (entityOpt.horse && isHorse(actor)) {
+        if (actor.isType(ActorType::Horse)) {
+            if (auto const coat = horseCoatName(langCode, actor.getVariant()); !coat.empty()) {
+                std::string text = labelText(langCode, "Coat") + " " + valueText(coat);
+                if (auto const markings = horseMarkingsName(langCode, actor.getMarkVariant()); !markings.empty()) {
+                    text += " " + colored(Insight::cfg().colors.label, "·") + " " + labelText(langCode, "Markings") + " "
+                          + valueText(markings);
+                }
+                lines.push_back(text);
+            }
+        }
+        std::string const speedUnit = tr(langCode, "blocks/s");
+        std::string const heightUnit = tr(langCode, "blocks");
+        std::string       text;
+        if (auto const speed = attributeValue(actor, SharedAttributes::MOVEMENT_SPEED()); speed) {
+            text = labelText(langCode, "Speed") + " "
+                 + valueText(util::trimNumber(static_cast<double>(*speed) * 42.16, 2) + " " + speedUnit);
+        }
+        if (auto const jump = attributeValue(actor, SharedAttributes::JUMP_STRENGTH()); jump) {
+            if (!text.empty()) {
+                text += " " + colored(Insight::cfg().colors.label, "·") + " ";
+            }
+            text += labelText(langCode, "Jump") + " "
+                  + valueText(util::trimNumber(jumpHeight(*jump), 2) + " " + heightUnit);
+        }
+        if (actor.hasSaddle()) {
+            if (!text.empty()) {
+                text += " " + colored(Insight::cfg().colors.label, "·") + " ";
+            }
+            text += valueText(tr(langCode, "Saddled"));
+        }
+        if (!text.empty()) {
+            lines.push_back(text);
+        }
+    }
+
+    // ---- armour stand pose ------------------------------------------------
+    // The engine exposes the pose *index* (0 = the default pose), not the pose names
+    // the game uses for them, so the index is what is shown - and only when it is not
+    // the default, which is what every freshly placed stand has.
+    if (entityOpt.armorStand && actor.isType(ActorType::ArmorStand)) {
+        if (auto pose = actor.getEntityContext().tryGetComponent<ArmorStandPoseIndexComponent>();
+            pose && pose->mValue != 0) {
+            lines.push_back(textLine(langCode, "Pose", std::to_string(pose->mValue)));
+        }
+    }
+
+    // ---- villager trade table ---------------------------------------------
+    // Profession and level, both synced actor data: the client's own villager render
+    // controller reads the same two values (query.variant / query.trade_tier). The V2
+    // villager is the one whose profession *is* its variant; the old villager type is
+    // left alone rather than labelled from the wrong table. The trade tier is counted
+    // from zero, so the level a player reads in the trade screen is one more.
+    if (entityOpt.villager && actor.isType(ActorType::VillagerV2)) {
+        std::string text;
+        if (auto const profession = villagerProfession(actor, langCode); !profession.empty()) {
+            text = labelText(langCode, "Profession") + " " + valueText(profession);
+        }
+        if (auto const tier = syncedInt(actor, ActorDataIDs::TradeTier); tier && *tier >= 0) {
+            if (!text.empty()) {
+                text += " " + colored(Insight::cfg().colors.label, "·") + " ";
+            }
+            text += labelText(langCode, "Level") + " " + valueText(std::to_string(*tier + 1));
+        }
+        if (!text.empty()) {
+            lines.push_back(text);
+        }
+    }
+
+    // ---- copper golem: waxed ----------------------------------------------
+    // The game declares this property as *not* client-synced, so a client can only ever
+    // read its default value - showing "No" for a golem that is in fact waxed would be
+    // worse than showing nothing, so this line belongs to the side that owns the state.
+    // The value is the plain yes/no a player expects, not the on/off of a switch.
+#ifndef INSIGHT_TARGET_CLIENT
+    if (entityOpt.waxed && actor.isType(ActorType::CopperGolem)) {
+        lines.push_back(textLine(langCode, "Waxed", tr(langCode, copperGolemWaxed(actor) ? "Yes" : "No")));
+    }
+#endif
 
     std::string out;
     for (size_t i = 0; i < lines.size(); ++i) {
