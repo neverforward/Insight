@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      file (ffurrer2/extract-release-notes), so the version heading below has to
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
-## [Unreleased]
+## [0.4.0] - 2026-10-04
 
 ### Added
 
@@ -428,7 +428,8 @@ First release: the mod template has been turned into the actual mod.
 
 - The mod template leftovers (`src/mod/MyMod.*`).
 
-[Unreleased]: https://github.com/neverforward/Insight/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/neverforward/Insight/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/neverforward/Insight/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/neverforward/Insight/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/neverforward/Insight/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/neverforward/Insight/compare/v0.1.0...v0.2.0
