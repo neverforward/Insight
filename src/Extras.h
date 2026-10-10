@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "Config.h"
 
@@ -16,18 +17,42 @@ class Container;
 
 namespace insight {
 
+// One non-empty container slot, in the form the client panel needs to draw it with the
+// game's item renderer. Kept to plain data rather than an ItemStack: the extras are
+// built on both platforms, and only the client ever turns these into icons.
+struct ContainerItem {
+    std::string name;        // full item name, e.g. "minecraft:stone"
+    int         count = 0;   // stack size
+    int         aux   = 0;   // aux value: the variant a name alone does not carry
+
+    // Lists of these are compared to decide whether a snapshot has been caught up with and
+    // whether the panel's icon stacks have to be rebuilt.
+    [[nodiscard]] bool operator==(ContainerItem const& other) const = default;
+};
+
+// A container's contents as the client panel draws them: which line of the extras block
+// they belong to, and the stacks themselves. Filled by the same builders that write the
+// "Items n/m" line, from the same source (including the live copy captured while a
+// container screen is open), so text and icons can never disagree.
+struct ContainerContents {
+    int                        index = -1; // line inside the extras block, -1 = none
+    std::vector<ContainerItem> items;
+};
+
 // Builds the extra, per-block-type information lines for the block at `pos`.
 // Returns one or more "\n"-joined lines (without a trailing newline), or an
 // empty string when nothing applies. Labels are translated for `langCode`
 // through the mod's message catalogue (lang/<locale>.json, see I18n.h); block
 // and item *names* come from the game's own translation tables, and the raw
-// translation key is shown when no localized name exists.
+// translation key is shown when no localized name exists. When `contents` is
+// given, a container's items are reported there as well.
 [[nodiscard]] std::string buildBlockExtras(
     IConstBlockSource const& region,
     BlockPos const&          pos,
     std::string const&       typeName,
     std::string const&       langCode,
-    BlockExtrasConfig const& opt
+    BlockExtrasConfig const& opt,
+    ContainerContents*       contents = nullptr
 );
 
 // Facing / orientation of the block at `pos` for the {direction} placeholder.
@@ -51,12 +76,13 @@ describeBlockFacing(IConstBlockSource const& region, BlockPos const& pos, std::s
 // engine keeps an up-to-date container for the UI, whereas the world copy we
 // otherwise read stays stale until the chunk is reloaded. The client captures
 // that live container here (keyed by block position) and it is preferred until
-// the world copy catches up.
-void setLiveContainerSnapshot(BlockPos const& pos, int filled, int total, int totalCount);
+// the world copy catches up. `size` is the container's slot count, which the
+// non-empty `items` alone do not tell.
+void setLiveContainerSnapshot(BlockPos const& pos, std::vector<ContainerItem> const& items, int size);
 
 // Same as above for entity containers (chest/hopper minecart, boat with
 // chest), keyed by the actor's unique id.
-void setLiveEntityContainerSnapshot(int64_t actorId, int filled, int total, int totalCount);
+void setLiveEntityContainerSnapshot(int64_t actorId, std::vector<ContainerItem> const& items, int size);
 
 // Container a block actor owns (26.40 keeps it on the actor's main component).
 // Exported because the client's live-snapshot code needs the same lookup to
@@ -72,13 +98,15 @@ void setLiveEntityContainerSnapshot(int64_t actorId, int filled, int total, int 
 // EntityExtrasConfig (owner, status effects, breeding timer, conversion time, pet
 // armour, mount numbers, an armour stand's pose). {light}/{direction} are separate
 // placeholders and are not repeated here. `opt.enabled` gates every adapter, block
-// and entity alike.
+// and entity alike. When `contents` is given, a container entity's items are
+// reported there as well.
 [[nodiscard]] std::string buildEntityExtras(
-    IConstBlockSource const& region,
-    Actor const&             actor,
-    std::string const&       langCode,
-    BlockExtrasConfig const& opt,
-    EntityExtrasConfig const& entityOpt
+    IConstBlockSource const&  region,
+    Actor const&              actor,
+    std::string const&        langCode,
+    BlockExtrasConfig const&  opt,
+    EntityExtrasConfig const& entityOpt,
+    ContainerContents*        contents = nullptr
 );
 
 } // namespace insight

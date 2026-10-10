@@ -10,6 +10,7 @@
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/item/ItemStack.h"
 
+#include "Extras.h"
 #include "ImGuiOverlay.h"
 #include "PlatformLogic.h"
 
@@ -58,6 +59,14 @@ private:
     // which shows up as a 3D block icon that keeps popping.
     std::string mIconKey;
 
+    // The container under the crosshair, as its adapter reported it, and the item stacks
+    // the panel draws from it. The stacks are cached against the list they were built
+    // from: a freshly built stack counts as "just picked up" and makes the item renderer
+    // replay its pickup squash, which is the popping the block icon had as well.
+    ContainerContents          mContainer;
+    std::vector<ItemStack>     mItemIcons;
+    std::vector<ContainerItem> mItemIconSource;
+
     // The content the panel actually draws. It lags mText by one step: the sampler clears
     // mText the moment the subject is lost, and drawing nothing there would blink the panel
     // away instead of fading it out.
@@ -78,9 +87,28 @@ private:
         // Deliberately *not* the line's own text, which may be a bar of block characters.
         std::string healthText;
         std::string armorText;
+
+        // A container's contents, drawn as the game's own item icons on the line the
+        // container adapter wrote (BlockExtrasConfig::chestIcons): the items themselves,
+        // plus how many fit on a row and how many are drawn at all. Empty for anything
+        // that is not a container, and on the server, where the plain line stays.
+        int                        itemsLine   = -1;
+        std::vector<ContainerItem> items;
+        int                        itemsPerRow = 9;
+        int                        itemsLimit  = 18;
+        // A line the client drops entirely: an empty container has nothing to show, so its
+        // "Items 0/27" line is left out rather than kept as the fallback. A server, whose
+        // channel carries text and nothing else, keeps the line.
+        int hiddenLine = -1;
     };
     PanelSprites mSprites;       // the current subject's sprite rows
     PanelSprites mShownSprites;  // the ones the drawn text belongs to
+
+    /// Turns the container the extras builder reported (mContainer) into the panel's own
+    /// item icon row: the line of the drawn text it replaces, the items themselves and how
+    /// they are laid out. Does nothing when the option keeps the plain "Items n/m" line,
+    /// when the subject carries no container, or when that container is empty.
+    void setContainerIcons(PanelSprites& sprites, int extrasLine, Config const& cfg);
     // Fade of the native panel, driven by client.transitionTime, so the display still fades
     // in and out the way the ImGui one did.
     float mNativeFade = 0.0f;

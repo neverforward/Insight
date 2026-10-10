@@ -434,29 +434,38 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
         if (auto cut = screenPrefix.find('_'); cut != std::string::npos) {
             screenPrefix.resize(cut);
         }
-        int splitFilled = 0;
-        int splitSize   = 0;
-        int splitTotal  = 0;
+        int                        splitFilled = 0;
+        int                        splitSize   = 0;
+        int                        splitTotal  = 0;
+        std::vector<ContainerItem> splitItems;
 
-        int bestFilled = -1;
-        int bestSize   = 0;
-        int bestTotal  = 0;
+        int                        bestFilled = -1;
+        int                        bestSize   = 0;
+        int                        bestTotal  = 0;
+        std::vector<ContainerItem> bestItems;
         for (auto const& [key, model] : *manager->mContainers) {
             if (!model) {
                 continue;
             }
             // ContainerModel::getItemStack()/getItems() are the live per-slot
             // stacks the UI is using; model->_getContainer() returns the stale
-            // world copy, which is why an edit inside the UI was invisible.
-            int size   = model->getContainerSize();
-            int filled = 0;
-            int total  = 0;
+            // world copy, which is why an edit inside the UI was invisible. The stacks
+            // themselves are kept, because the panel draws them as item icons.
+            int                        size   = model->getContainerSize();
+            int                        filled = 0;
+            int                        total  = 0;
+            std::vector<ContainerItem> items;
             if (size > 0) {
                 for (int i = 0; i < size; ++i) {
                     auto const& stack = model->getItemStack(i);
                     if (!stack.isNull()) {
                         ++filled;
                         total += stack.mCount;
+                        if (stack.mItem) {
+                            items.push_back(
+                                ContainerItem{stack.mItem->mFullName->getString(), stack.mCount, stack.getAuxValue()}
+                            );
+                        }
                     }
                 }
             }
@@ -464,6 +473,7 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                 splitSize   += size;
                 splitFilled += filled;
                 splitTotal  += total;
+                splitItems.insert(splitItems.end(), items.begin(), items.end());
             }
             // The player's own inventory models live in this same map, and the main
             // inventory has exactly as many slots as a chest (27), so matching by slot
@@ -490,6 +500,7 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                 bestSize   = size;
                 bestFilled = filled;
                 bestTotal  = total;
+                bestItems  = std::move(items);
             }
         }
         // a container the screen split into pieces wins over the single-model
@@ -499,11 +510,12 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
             bestSize   = splitSize;
             bestFilled = splitFilled;
             bestTotal  = splitTotal;
+            bestItems  = std::move(splitItems);
         }
         if (!pos && ownerId && bestFilled >= 0) {
             // Container entities (chest/hopper minecart, boat with chest) are
             // keyed by their unique id instead of a block position.
-            setLiveEntityContainerSnapshot(static_cast<int64_t>(ownerId->rawID), bestFilled, bestSize, bestTotal);
+            setLiveEntityContainerSnapshot(static_cast<int64_t>(ownerId->rawID), bestItems, bestSize);
             logger.debug(
                 "[ctr] entity snapshot -> {}/{} total {} (actor {})",
                 bestFilled,
@@ -513,7 +525,7 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
             );
         }
         if (pos && bestFilled >= 0) {
-            setLiveContainerSnapshot(*pos, bestFilled, bestSize, bestTotal);
+            setLiveContainerSnapshot(*pos, bestItems, bestSize);
             // Log every change immediately (not throttled) so a single edit
             // inside the container UI is always visible in the log.
             static int lastFilled = -1;
@@ -676,6 +688,43 @@ void ClientLogic::disable() {
     mVisible = false;
     mText.clear();
     mOverlay.shutdown();
+}
+
+void ClientLogic::setContainerIcons(PanelSprites& sprites, int extrasLine, Config const& cfg) {
+    if (!cfg.extras.enabled || !cfg.extras.chest || !cfg.extras.chestIcons) {
+        return;
+    }
+    if (mContainer.index < 0 || extrasLine < 0) {
+        return; // no container here: the line the adapter wrote is all there is
+    }
+    if (mContainer.items.empty()) {
+        // An empty container has nothing to draw, and "Items 0/27" is not worth a line: the
+        // client drops it. The server keeps it, being unable to draw anything else.
+        sprites.hiddenLine = extrasLine + mContainer.index;
+        return;
+    }
+    sprites.itemsLine   = extrasLine + mContainer.index;
+    sprites.items       = mContainer.items;
+    if (cfg.extras.chestIconsMerge) {
+        // Like terms: one icon per item type, with the counts of its stacks added up, so six
+        // swords read as one sword with "6" and five stacks of 64 grass blocks as "320". The
+        // first appearance keeps the order. The panel's item icons are drawn per stack, and
+        // the size they carry is written as text anyway, so only the list changes here.
+        std::vector<ContainerItem> merged;
+        for (auto const& item : mContainer.items) {
+            auto it = std::find_if(merged.begin(), merged.end(), [&item](ContainerItem const& other) {
+                return other.name == item.name && other.aux == item.aux;
+            });
+            if (it == merged.end()) {
+                merged.push_back(item);
+            } else {
+                it->count += item.count;
+            }
+        }
+        sprites.items = std::move(merged);
+    }
+    sprites.itemsPerRow = std::clamp(cfg.extras.chestIconsPerRow, 1, 27);
+    sprites.itemsLimit  = std::max(0, cfg.extras.chestIconLimit);
 }
 
 void ClientLogic::pushOverlay() {
@@ -929,7 +978,8 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             );
             info.distance = entityDist;
             info.dimName  = clientDimName(region);
-            info.extras   = buildEntityExtras(region, *entity, lang, cfg.extras, cfg.entityExtras);
+            mContainer    = ContainerContents{};
+            info.extras   = buildEntityExtras(region, *entity, lang, cfg.extras, cfg.entityExtras, &mContainer);
             // The entity panel has its own layout (renderEntityText): the entity's own
             // yaw as the facing, its position, and hit points - but no light level and
             // no emission, which describe a world position, not the entity.
@@ -982,6 +1032,7 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
                 mSprites.armor     = info.armorValue;
                 mSprites.armorText = info.armorText;
             }
+            setContainerIcons(mSprites, info.extrasLine, cfg);
             mTargetKey = "e:" + eType + "#" + std::to_string(entity->getOrCreateUniqueID().rawID);
             mIconStack = ItemStack{}; // entities have no block icon
             std::string const entityState = info.entityType + "|" + info.entityName + "|" + std::to_string(info.health);
@@ -998,7 +1049,8 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
         } else if (hit) {
             auto info      = makeBlockLookInfo(*hit, lang);
             info.dimName   = clientDimName(region);
-            info.extras    = buildBlockExtras(region, hit->pos, hit->typeName, lang, cfg.extras);
+            mContainer     = ContainerContents{};
+            info.extras    = buildBlockExtras(region, hit->pos, hit->typeName, lang, cfg.extras, &mContainer);
             info.direction = describeBlockFacing(region, hit->pos, lang);
             info.light     = describeBlockLight(region, hit->pos);
             info.emission  = describeBlockEmission(region, hit->pos);
@@ -1030,6 +1082,9 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
                     mIconStack = ItemStack{};
                 }
             }
+            // The container's own contents, drawn as item icons on the line the container
+            // adapter wrote (see setContainerIcons).
+            setContainerIcons(mSprites, info.extrasLine, cfg);
             std::string neighborInfo;
             if (hit->typeName.find("piston") != std::string::npos) {
                 // log the six neighbours so the piston-arm block id is visible
@@ -1149,6 +1204,12 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
     float const            fontScale = std::max(0.25f, cfg.client.fontSize);
     TextMeasureData const  textData{fontScale, 0.0f, cfg.client.shadow, false, false, ::ui::TextAlignment::Left};
     CaretMeasureData const caretData{-1, false};
+    // The stack size written into an item icon's corner, like vanilla's own count badge: the
+    // same font at a smaller scale, right-aligned so it hugs the icon's edge, plus the small
+    // "+n" that counts what did not fit.
+    TextMeasureData const smallTextData{
+        fontScale * 0.6f, 0.0f, cfg.client.shadow, false, false, ::ui::TextAlignment::Right
+    };
 
     float textR = 1.0f;
     float textG = 1.0f;
@@ -1201,6 +1262,10 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
     bool const  withNumber = cfg.entity.healthStyle == "bar+number" || cfg.entity.healthStyle == "hearts+number";
     // One sprite is exactly one line of text tall, which is also how a bar is sized.
     float const spriteSize = std::max(1.0f, std::round(textHeight));
+    // The game draws an item into a 16-unit slot of its own GUI, so that is the size the
+    // container's icons use - the same size the item has in the inventory, times the panel's
+    // font scale so the row follows client.fontSize as everything else does.
+    float const itemSize = std::max(8.0f, std::round(16.0f * fontScale));
     int const   perRow     = std::clamp(mShownSprites.perRow, 1, 40);
     float const barHeight  = std::max(3.0f, std::round(spriteSize * 0.5f));
     // The width and height of a graphic row: in bar mode it is one bar wide (measured
@@ -1233,7 +1298,11 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
         std::string text;
         bool        hearts   = false; // draw the hearts on this line instead of the text
         bool        armor    = false; // draw the armor icons / bar on this line instead
+        bool        items    = false; // draw a container's item icons on this line
+        bool        hidden   = false; // drop this line entirely (an empty container)
         bool        showText = true;  // ... and still write the line's text behind it
+        int         itemShown = 0;    // how many item icons fit (of the container's list)
+        int         itemRows  = 0;
         float       graphicWidth  = 0.0f;
         float       graphicHeight = 0.0f; // what the graphic actually covers, for centring
         float       textWidth     = 0.0f;
@@ -1253,7 +1322,39 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
         line.text   = rawLines[i];
         line.hearts = heartsAvailable && static_cast<int>(i) == mShownSprites.healthLine;
         line.armor  = armorAvailable && static_cast<int>(i) == mShownSprites.armorLine;
-        if (line.hearts || line.armor) {
+        line.items  = !mShownSprites.items.empty() && static_cast<int>(i) == mShownSprites.itemsLine;
+        line.hidden = static_cast<int>(i) == mShownSprites.hiddenLine;
+        if (line.hidden) {
+            line.text.clear();
+            line.showText = false;
+            line.width    = 0.0f;
+            line.height   = 0.0f;
+        } else if (line.items) {
+            // The container's contents replace its "Items n/m" line: one icon per slot, the
+            // stack size written small in the icon's corner, `itemsPerRow` of them per row
+            // and at most `itemsLimit` (0 = all) - a small "+n" behind the last one counts
+            // what did not fit.
+            int const perRow = std::clamp(mShownSprites.itemsPerRow, 1, 27);
+            int const total  = static_cast<int>(mShownSprites.items.size());
+            int const limit  = mShownSprites.itemsLimit;
+            line.itemShown   = limit > 0 && total > limit ? limit : total;
+            line.itemRows    = (line.itemShown + perRow - 1) / perRow;
+            // Each icon keeps the size its item has in the game's own GUI (16 UI units, the
+            // slot size the inventory draws at), scaled by the panel's font size so the row
+            // still follows client.fontSize.
+            line.graphicWidth  = static_cast<float>(std::min(line.itemShown, perRow)) * itemSize;
+            line.graphicHeight = static_cast<float>(line.itemRows) * itemSize;
+            line.showText      = false; // the icons are the line
+            line.text.clear();
+            line.width  = line.graphicWidth;
+            line.height = line.graphicHeight;
+            if (total > line.itemShown) {
+                line.text      = "+" + std::to_string(total - line.itemShown);
+                line.textWidth = measure.measureText(fontRef, line.text, 4096.0f, 4096.0f, smallTextData, caretData)
+                                     .mSize->x;
+                line.width += spriteGap + line.textWidth;
+            }
+        } else if (line.hearts || line.armor) {
             // A sprite row covers the subject's whole scale, which is what keeps the hearts
             // it has already lost visible as their background sprites.
             float const capacity  = line.hearts ? std::max(mShownSprites.healthMax, 1.0f) : kArmorBarMax;
@@ -1424,6 +1525,66 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
         );
     }
 
+    // The container's own item icons, drawn by the same item renderer, and before any text is
+    // batched: the item renderer is not part of the UI's text batch (the subject's icon above
+    // is drawn here for the same reason). The stacks are cached against the list they were
+    // built from - a freshly built one counts as "just picked up" and would replay the
+    // pickup squash on every frame. Their stack sizes are written as text further down.
+    if (auto* itemRenderer = client.getItemRenderer(); itemRenderer != nullptr) {
+        bool const anyItems = std::any_of(lines.begin(), lines.end(), [](PanelLine const& line) {
+            return line.items && line.itemShown > 0;
+        });
+        if (anyItems) {
+            if (mItemIconSource != mShownSprites.items) {
+                mItemIconSource = mShownSprites.items;
+                mItemIcons.clear();
+                mItemIcons.reserve(mItemIconSource.size());
+                for (auto const& item : mItemIconSource) {
+                    ItemStack stack;
+                    try {
+                        stack.reinit(item.name, 1, item.aux);
+                        stack.mShowPickUp  = false;
+                        stack.mWasPickedUp = false;
+                    } catch (...) {
+                        stack = ItemStack{};
+                    }
+                    mItemIcons.push_back(std::move(stack));
+                }
+            }
+            BaseActorRenderContext renderContext(context.mScreenContext, client, client.getMinecraftGame_DEPRECATED());
+            context.flushImages(mce::Color{1.0f, 1.0f, 1.0f, 1.0f}, 1.0f, HashedString{"ui_fillColor"});
+            float const scale   = itemSize / 16.0f; // one item is itemSize units across
+            float       itemY   = boxT + padY;
+            for (auto const& line : lines) {
+                if (line.items) {
+                    int const perRow = std::clamp(mShownSprites.itemsPerRow, 1, 27);
+                    for (int index = 0; index < line.itemShown && index < static_cast<int>(mItemIcons.size());
+                         ++index) {
+                        auto const& stack = mItemIcons[static_cast<size_t>(index)];
+                        if (stack.isNull() || !stack.mItem) {
+                            continue;
+                        }
+                        int const column = index % perRow;
+                        int const row    = index / perRow;
+                        itemRenderer->renderGuiItemNew(
+                            renderContext,
+                            stack,
+                            0,
+                            boxL + padX + iconCol + static_cast<float>(column) * itemSize,
+                            itemY + static_cast<float>(row) * itemSize,
+                            false,
+                            mNativeFade,
+                            1.0f,
+                            scale,
+                            17
+                        );
+                    }
+                }
+                itemY += line.height;
+            }
+        }
+    }
+
     // Text: one drawText per line inside the reserved area, flushed together, the way vanilla
     // draws its labels. Follows the morphing box, like the icon above. The two sprite rows are
     // drawn in the band their line holds instead of text.
@@ -1445,6 +1606,63 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
         );
     };
     for (auto const& line : lines) {
+        if (line.hidden) {
+            continue; // nothing to draw, and no height either
+        }
+        if (line.items) {
+            // The item icons themselves were drawn above; here only their stack sizes, small
+            // and right-aligned into each icon's corner the way vanilla writes them, plus the
+            // "+n" that counts the stacks that did not fit.
+            int const perRow = std::clamp(mShownSprites.itemsPerRow, 1, 27);
+            for (int index = 0; index < line.itemShown && index < static_cast<int>(mShownSprites.items.size());
+                 ++index) {
+                int const count = mShownSprites.items[static_cast<size_t>(index)].count;
+                if (count <= 1) {
+                    continue; // vanilla leaves a single item's corner empty
+                }
+                int const   column = index % perRow;
+                int const   row    = index / perRow;
+                float const left   = boxL + padX + iconCol + static_cast<float>(column) * itemSize;
+                float const top    = y + static_cast<float>(row) * itemSize;
+                // The bottom-right corner, the way vanilla writes a stack size: the text
+                // starts low in the icon and may stick out a little below it.
+                RectangleArea const area{
+                    left,
+                    left + itemSize,
+                    top + itemSize * 0.6f,
+                    top + itemSize * 1.2f
+                };
+                context.drawText(
+                    font,
+                    area,
+                    std::to_string(count),
+                    textColor,
+                    mNativeFade,
+                    ::ui::TextAlignment::Right,
+                    smallTextData,
+                    caretData
+                );
+            }
+            if (!line.text.empty()) { // the "+n" behind the icons
+                context.drawText(
+                    font,
+                    RectangleArea{
+                        boxL + padX + iconCol + line.graphicWidth + spriteGap,
+                        boxL + padX + iconCol + line.graphicWidth + spriteGap + line.textWidth + 1.0f,
+                        y,
+                        y + lineStep,
+                    },
+                    std::string{line.text},
+                    textColor,
+                    mNativeFade,
+                    ::ui::TextAlignment::Left,
+                    smallTextData,
+                    caretData
+                );
+            }
+            y += line.height;
+            continue;
+        }
         if (line.hearts || line.armor) {
             float const points = line.hearts ? mShownSprites.health : mShownSprites.armor;
             // A bar is filled against the subject's own scale; armor has no attribute of

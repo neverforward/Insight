@@ -273,6 +273,8 @@ bool const* findBoolOption(std::string const& option) {
         {"extras.hardness",        &cfg.extras.hardness        },
         {"extras.blastResistance", &cfg.extras.blastResistance },
         {"extras.chest",           &cfg.extras.chest           },
+        {"extras.chestIcons",      &cfg.extras.chestIcons      },
+        {"extras.chestIconsMerge", &cfg.extras.chestIconsMerge },
         {"extras.bookshelf",       &cfg.extras.bookshelf       },
         {"extras.shelf",           &cfg.extras.shelf           },
         {"extras.lectern",         &cfg.extras.lectern         },
@@ -425,6 +427,12 @@ std::string currentValueText(Row const& row, std::string const& locale) {
     }
     if (row.option == "entity.heartsPerRow") {
         return std::to_string(cfg.entity.heartsPerRow);
+    }
+    if (row.option == "extras.chestIconsPerRow") {
+        return std::to_string(cfg.extras.chestIconsPerRow);
+    }
+    if (row.option == "extras.chestIconLimit") {
+        return std::to_string(cfg.extras.chestIconLimit);
     }
     if (row.option == "entityExtras.effectsLimit") {
         return std::to_string(cfg.entityExtras.effectsLimit);
@@ -1138,6 +1146,16 @@ void ConfigUi::draw() {
                     {"Block states", "extras.misc", Kind::Bool, 0.0f, 0.0f, false, {}},
             },
                 200
+            );
+            drawSection(
+                "Extras: containers",
+                {
+                    {"Item icons",      "extras.chestIcons",        Kind::Bool,  0.0f,  0.0f, false, {}   },
+                    {"Merge stacks",    "extras.chestIconsMerge",   Kind::Bool,  0.0f,  0.0f, false, {}   },
+                    {"Icons per row",   "extras.chestIconsPerRow",  Kind::Int,   1.0f, 27.0f, false, {}   },
+                    {"Icon limit",      "extras.chestIconLimit",    Kind::Int,   0.0f, 54.0f, false, {}   },
+            },
+                220
             );
             drawSection(
                 "Extras: entities",

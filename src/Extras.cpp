@@ -488,9 +488,8 @@ bool isAirAt(IConstBlockSource const& region, BlockPos const& pos) {
 // live container snapshot (client): see setLiveContainerSnapshot()
 // ---------------------------------------------------------------------------
 struct ContainerSnapshot {
-    int filled     = 0;
-    int total      = 0;
-    int totalCount = 0;
+    std::vector<ContainerItem> items; // the non-empty slots, in slot order
+    int                        size = 0;
 };
 
 std::map<std::tuple<int, int, int>, ContainerSnapshot>& liveSnapshots() {
@@ -546,7 +545,40 @@ std::string itemListLine(Container const& container, std::string const& langCode
     return out;
 }
 
-std::string chestLine(BlockActor const* be, BlockPos const& pos, std::string const& langCode) {
+// The non-empty slots of a container, in slot order, in the form the client panel turns
+// into item icons. Null stacks are skipped (an empty slot is not drawn) and the stack's
+// aux value is kept, because a name alone does not carry the variant (wool colour, ...).
+std::vector<ContainerItem> readContainerItems(Container const& container) {
+    std::vector<ContainerItem> items;
+    int const                  size = container.getContainerSize();
+    if (size > 0) {
+        items.reserve(static_cast<size_t>(size));
+    }
+    for (int i = 0; i < size; ++i) {
+        auto const& stack = container.getItem(i);
+        if (stack.isNull() || !stack.mItem) {
+            continue;
+        }
+        items.push_back(ContainerItem{stack.mItem->mFullName->getString(), stack.mCount, stack.getAuxValue()});
+    }
+    return items;
+}
+
+// The number of items a list of stacks holds in total.
+int totalCountOf(std::vector<ContainerItem> const& items) {
+    int total = 0;
+    for (auto const& item : items) {
+        total += item.count;
+    }
+    return total;
+}
+
+std::string chestLine(
+    BlockActor const*   be,
+    BlockPos const&     pos,
+    std::string const&  langCode,
+    ContainerContents*  out
+) {
     if (!be) {
         return {};
     }
@@ -558,19 +590,15 @@ std::string chestLine(BlockActor const* be, BlockPos const& pos, std::string con
     if (size <= 0) {
         return {};
     }
-    int filled = 0;
-    int total  = 0;
-    for (int i = 0; i < size; ++i) {
-        auto const& st = c->getItem(i);
-        if (!st.isNull()) {
-            ++filled;
-            total += st.mCount;
-        }
-    }
+    std::vector<ContainerItem> items  = readContainerItems(*c);
+    int                        filled = static_cast<int>(items.size());
+    int                        total  = totalCountOf(items);
 
     // Prefer the live snapshot taken from an open container UI: the engine's
     // world copy of a container keeps its old contents until the chunk is
-    // reloaded, so the player's own edits would otherwise not show up.
+    // reloaded, so the player's own edits would otherwise not show up. The snapshot
+    // carries the stacks themselves now, so the icons follow an open screen just as
+    // the numbers do.
     int   worldFilled  = filled;
     int   worldTotal   = total;
     bool  usedSnapshot = false;
@@ -578,11 +606,12 @@ std::string chestLine(BlockActor const* be, BlockPos const& pos, std::string con
     auto  key          = std::make_tuple(pos.x, pos.y, pos.z);
     if (auto it = snapshots.find(key); it != snapshots.end()) {
         auto const& snap = it->second;
-        if (snap.total == size && snap.filled == filled && snap.totalCount == total) {
+        if (snap.size == size && snap.items == items) {
             snapshots.erase(it); // the world copy caught up: drop the snapshot
         } else {
-            filled       = snap.filled;
-            total        = snap.totalCount;
+            items        = snap.items;
+            filled       = static_cast<int>(items.size());
+            total        = totalCountOf(items);
             usedSnapshot = true;
         }
     }
@@ -597,6 +626,9 @@ std::string chestLine(BlockActor const* be, BlockPos const& pos, std::string con
         );
     }
 
+    if (out != nullptr) {
+        out->items = std::move(items);
+    }
     std::string s = labelText(langCode, "Items") + " " + valueText(std::to_string(filled) + "/" + std::to_string(size));
     if (total > 0) {
         s += " " + colored(Insight::cfg().colors.label, "·") + " " + valueText(std::to_string(total));
@@ -616,22 +648,18 @@ std::string machineLine(BlockActor const* be, BlockPos const& pos, std::string c
     if (size <= 0) {
         return {};
     }
-    int filled = 0;
-    for (int i = 0; i < size; ++i) {
-        if (!c->getItem(i).isNull()) {
-            ++filled;
-        }
-    }
+    std::vector<ContainerItem> const items  = readContainerItems(*c);
+    int                              filled = static_cast<int>(items.size());
     // Furnaces / brewing stands are block containers too: prefer the live
     // snapshot captured from the open UI for the same reason as chestLine().
     auto& snapshots = liveSnapshots();
     auto  key       = std::make_tuple(pos.x, pos.y, pos.z);
     if (auto it = snapshots.find(key); it != snapshots.end()) {
         auto const& snap = it->second;
-        if (snap.total == size && snap.filled == filled) {
+        if (snap.size == size && snap.items.size() == items.size()) {
             snapshots.erase(it);
         } else {
-            filled = snap.filled;
+            filled = static_cast<int>(snap.items.size());
         }
     }
     return labelText(langCode, "Slots") + " " + valueText(std::to_string(filled) + "/" + std::to_string(size));
@@ -1389,20 +1417,20 @@ std::string describeBlockEmission(IConstBlockSource const& region, BlockPos cons
     }
 }
 
-void setLiveContainerSnapshot(BlockPos const& pos, int filled, int total, int totalCount) {
+void setLiveContainerSnapshot(BlockPos const& pos, std::vector<ContainerItem> const& items, int size) {
     auto& snapshots = liveSnapshots();
     if (snapshots.size() > 512) {
         snapshots.clear(); // defensive: never grow without bound
     }
-    snapshots[std::make_tuple(pos.x, pos.y, pos.z)] = ContainerSnapshot{filled, total, totalCount};
+    snapshots[std::make_tuple(pos.x, pos.y, pos.z)] = ContainerSnapshot{items, size};
 }
 
-void setLiveEntityContainerSnapshot(int64_t actorId, int filled, int total, int totalCount) {
+void setLiveEntityContainerSnapshot(int64_t actorId, std::vector<ContainerItem> const& items, int size) {
     auto& snapshots = liveEntitySnapshots();
     if (snapshots.size() > 512) {
         snapshots.clear();
     }
-    snapshots[actorId] = ContainerSnapshot{filled, total, totalCount};
+    snapshots[actorId] = ContainerSnapshot{items, size};
 }
 
 std::string describeBlockStateNames(IConstBlockSource const& region, BlockPos const& pos) {
@@ -1431,7 +1459,8 @@ std::string buildBlockExtras(
     BlockPos const&          pos,
     std::string const&       typeName,
     std::string const&       langCode,
-    BlockExtrasConfig const& opt
+    BlockExtrasConfig const& opt,
+    ContainerContents*       contents
 ) {
     if (!opt.enabled) {
         return {};
@@ -1472,11 +1501,13 @@ std::string buildBlockExtras(
         be = region.getBlockEntity(pos);
     }
 
+    // A container's contents are the last line of the block panel, whatever else the block
+    // reports: they are what a player looks at the container for, and on the client they are
+    // a block of icons that would push every other line around from the middle. The text is
+    // built here (it also fills `contents`), the line itself is appended at the very end.
+    std::string chestText;
     if (opt.chest && be && containerOf(be) && isContainerBlock(region, pos)) {
-        auto line = chestLine(be, pos, langCode);
-        if (!line.empty()) {
-            lines.push_back(line);
-        }
+        chestText = chestLine(be, pos, langCode, contents);
     }
     // machine slots: the block actor type says whether this is a furnace-like
     // block or a brewing stand (engine enum, not a list of block ids)
@@ -1618,6 +1649,13 @@ std::string buildBlockExtras(
         }
     }
 
+    if (!chestText.empty()) {
+        if (contents != nullptr) {
+            contents->index = static_cast<int>(lines.size()); // last line, inside the extras block
+        }
+        lines.push_back(std::move(chestText));
+    }
+
     std::string out;
     for (size_t i = 0; i < lines.size(); ++i) {
         if (i) {
@@ -1633,7 +1671,8 @@ std::string buildEntityExtras(
     Actor const&              actor,
     std::string const&        langCode,
     BlockExtrasConfig const&  opt,
-    EntityExtrasConfig const& entityOpt
+    EntityExtrasConfig const& entityOpt,
+    ContainerContents*        contents
 ) {
     // kept for signature symmetry with buildBlockExtras(); entity extras only
     // read actor components, so no block sampling happens here.
@@ -1646,22 +1685,19 @@ std::string buildEntityExtras(
     // ---- container entities: whatever carries a container component ------
     // (chest/hopper minecart, boat with chest, ...). The component is the
     // engine data, so no list of entity ids is needed.
+    // The container's contents go last here as well (see buildBlockExtras): built now, pushed
+    // at the end of the extras.
+    std::string                chestText;
+    std::vector<ContainerItem> chestItems;
     if (opt.chest) {
-        int size   = 0;
-        int filled = 0;
-        int total  = 0;
+        int                        size = 0;
+        std::vector<ContainerItem> items;
         if (auto component = actor.getEntityContext().tryGetComponent<ContainerComponent>()) {
             // 26.40: the component no longer forwards the container interface
             // itself, it holds the FillingContainer that does.
             auto const& container = *component->mContainer;
             size                  = container.getContainerSize();
-            for (int i = 0; i < size; ++i) {
-                auto const& item = container.getItem(i);
-                if (!item.isNull()) {
-                    ++filled;
-                    total += item.mCount;
-                }
-            }
+            items                 = readContainerItems(container);
         }
         // Entity containers have the same staleness problem as block ones: the
         // component keeps its old contents, while the container UI shows live
@@ -1670,21 +1706,22 @@ std::string buildEntityExtras(
         auto  key       = static_cast<int64_t>(actor.getOrCreateUniqueID().rawID);
         if (auto it = snapshots.find(key); it != snapshots.end()) {
             auto const& snap = it->second;
-            if (snap.total == size && snap.filled == filled && snap.totalCount == total) {
+            if (snap.size == size && snap.items == items) {
                 snapshots.erase(it);
             } else {
-                filled = snap.filled;
-                size   = snap.total;
-                total  = snap.totalCount;
+                items = snap.items;
+                size  = snap.size;
             }
         }
         if (size > 0) {
-            std::string s =
+            int const filled = static_cast<int>(items.size());
+            int const total  = totalCountOf(items);
+            chestItems       = items;
+            chestText =
                 labelText(langCode, "Items") + " " + valueText(std::to_string(filled) + "/" + std::to_string(size));
             if (total > 0) {
-                s += " " + colored(Insight::cfg().colors.label, "·") + " " + valueText(std::to_string(total));
+                chestText += " " + colored(Insight::cfg().colors.label, "·") + " " + valueText(std::to_string(total));
             }
-            lines.push_back(s);
         }
     }
 
@@ -1923,6 +1960,14 @@ std::string buildEntityExtras(
         lines.push_back(textLine(langCode, "Waxed", tr(langCode, copperGolemWaxed(actor) ? "Yes" : "No")));
     }
 #endif
+
+    if (!chestText.empty()) {
+        if (contents != nullptr) {
+            contents->index = static_cast<int>(lines.size()); // last line, inside the extras block
+            contents->items = std::move(chestItems);
+        }
+        lines.push_back(std::move(chestText));
+    }
 
     std::string out;
     for (size_t i = 0; i < lines.size(); ++i) {

@@ -237,6 +237,23 @@ struct BlockExtrasConfig {
     bool brewing   = true; // brewing stand slots
     bool furnace   = true; // furnace / blast furnace / smoker slots
 
+    // How a container's contents are shown, client only (a server-side channel carries
+    // text and nothing else, so there the "Items n/m" line stays):
+    //   true  - the items themselves, drawn with the game's own item icons: one icon per
+    //           non-empty slot, its stack size as a small number in the corner, laid out
+    //           `chestIconsPerRow` per row and at most `chestIconLimit` of them (0 = all,
+    //           with the ones left out counted as a small "+n"). The numbers are the same
+    //           source as the line they replace, so an open container screen updates both.
+    //   false - the plain "Items n/m · total" line
+    // An empty container has nothing to draw and keeps the plain line either way.
+    bool chestIcons       = true;
+    int  chestIconsPerRow = 9;  // 1..27
+    int  chestIconLimit   = 18; // 0 = every item, otherwise at most this many icons
+    // Merge like terms before drawing: one icon per item type with the counts of its stacks
+    // added up (six swords read as one sword with "6", five stacks of 64 grass blocks as
+    // "320") instead of one icon per slot.
+    bool chestIconsMerge = true;
+
     // --- block entities ---------------------------------------------------
     bool jukebox   = true; // record being played
     bool sign      = true; // sign text
@@ -325,8 +342,10 @@ struct Config {
     // 5 -> 6: the per-field colours (ColorOptions, `colors`). 6 -> 7: how the entity
     // panel draws the hit points and the armor row (entity.healthStyle, its
     // threshold, row size and decimals, and entity.armor). 7 -> 8: the entity extras
-    // (EntityExtrasConfig, `entityExtras`).
-    int version = 8;
+    // (EntityExtrasConfig, `entityExtras`). 8 -> 9: a container's contents as item icons
+    // (extras.chestIcons, its row size and limit). 9 -> 10: merging like terms on that row
+    // (extras.chestIconsMerge).
+    int version = 10;
 
     // Master switch for the whole mod.
     bool enabled = true;

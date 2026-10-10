@@ -97,7 +97,9 @@ interval, the channel, ...), **Block lines**, **Entity lines**, **Colours**, **E
 **Extras: block entities**, **Extras: redstone** and **Extras: entities**.
 
 The client-only options are deliberately absent from the menu - `showOverlay`, the anchor, the offsets,
-the font and appearance settings, the language and the key bindings do nothing on a server.
+the font and appearance settings, the language, the key bindings and the container item icons
+(`extras.chestIcons`, `extras.chestIconsMerge`, `extras.chestIconsPerRow`, `extras.chestIconLimit`,
+which the client draws from its own screen) do nothing on a server.
 `.cache/check_gui_options.py` keeps that claim honest: it checks that the menu offers every option
 `/insight set` accepts on a server, and nothing else, and that every group title and row label it shows
 is translated.
@@ -105,7 +107,7 @@ is translated.
 
 ```jsonc
 {
-    "version": 8,                  // schema version; older files are merged automatically, and the
+    "version": 10,                  // schema version; older files are merged automatically, and the
                                    // templates of a version <= 4 file become display / entity
                                    // switches (see below)
 
@@ -167,7 +169,11 @@ is translated.
         "enabled": true,           // master switch for every adapter on both sides
         "hardness": true,          // breaking time of every block
         "blastResistance": true,   // explosion resistance
-        "chest": true,             // container occupancy: items 12/27
+        "chest": true,             // container occupancy: the items themselves as icons (client), items 12/27 (server)
+        "chestIcons": true,        // draw a container's contents as item icons instead of "items 12/27" (client only)
+        "chestIconsMerge": true,   // merge like terms: one icon per item type, its stack sizes added up
+        "chestIconsPerRow": 9,     // how many of those icons fit on a row
+        "chestIconLimit": 18,      // at most this many icons (0 = every item; the rest show as a small "+n")
         "bookshelf": true,         // chiseled bookshelf books
         "shelf": true,             // shelf contents
         "lectern": true,           // lectern book + page
@@ -415,7 +421,7 @@ own ones live under `entityExtras` (see below). Every adapter below has a switch
 
 | Switch | Contents |
 | --- | --- |
-| `extras.chest` | container occupancy: `Items 12/27` (plus the total item count behind a `·`, e.g. `Items 12/27 §7· §f35`) - chest/trapped chest/barrel/hopper/dropper/dispenser/copper chest/shulker box/crafter/chiseled bookshelf/lectern/decorated pot, plus chest minecart, hopper minecart and boat with chest |
+| `extras.chest` | container contents - chest/trapped chest/barrel/hopper/dropper/dispenser/copper chest/shulker box/crafter/chiseled bookshelf/lectern/decorated pot, plus chest minecart, hopper minecart and boat with chest. The **client** draws the items themselves with the game's own item icons (`extras.chestIcons`): one icon per non-empty slot at the size the game draws an item in its own GUI (so they look like the inventory's), its stack size written small in the corner the way vanilla does, `extras.chestIconsMerge` draws like terms as one icon with the counts of their stacks added up (six swords read as one sword with `6`, five stacks of 64 grass blocks as `320`) instead of one icon per slot. It is always the panel's **last** line, whatever else the block reports, so the icons sit at the bottom of the box. `extras.chestIconsPerRow` icons go on a row and at most `extras.chestIconLimit` of them are drawn (0 = all, the rest counted as a small `+n`). An empty container has nothing to draw, so on the client its line is left out altogether; a server keeps the plain line. A **server** channel carries text and nothing else, so there the line reads `Items 12/27` (plus the total item count behind a `·`, e.g. `Items 12/27 §7· §f35`) |
 | `extras.furnace` | furnace / blast furnace / smoker: `Slots 1/3` |
 | `extras.brewing` | brewing stand: `Slots x/5` |
 | `extras.redstone` | comparator, redstone wire / repeater, pressure plate, target: `Signal 12` |

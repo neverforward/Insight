@@ -192,12 +192,20 @@ std::string positionLine(LookInfo const& info, bool showPosition, bool showDista
     return line;
 }
 
-// The extra per-type lines, last.
-void appendExtras(std::vector<std::string>& lines, std::string const& extras, bool show) {
+// The extra per-type lines, last. `extrasLine` is set to the line the block starts on,
+// so that a caller can find one adapter's line inside it (a container's item icons) -
+// the extras are handed over as one "\n"-joined string, only the caller knows which of
+// its lines it wants.
+void appendExtras(std::vector<std::string>& lines, std::string const& extras, bool show, int& extrasLine) {
     if (!show) {
         return;
     }
+    bool first = true;
     for (auto& extra : util::splitLines(extras)) {
+        if (first && !extra.empty()) {
+            extrasLine = static_cast<int>(lines.size());
+            first      = false;
+        }
         pushLine(lines, std::move(extra));
     }
 }
@@ -217,7 +225,7 @@ std::string joinLines(std::vector<std::string> const& lines) {
 
 // The block panel: name (facing), type id (key), position (distance), light level
 // and light emission, then the per-block-type extras.
-std::string renderBlockText(Config const& cfg, LookInfo const& info, std::string const& localeCode) {
+std::string renderBlockText(Config const& cfg, LookInfo& info, std::string const& localeCode) {
     auto const&              d = cfg.display;
     auto const&              c = cfg.colors;
     std::vector<std::string> lines;
@@ -232,7 +240,7 @@ std::string renderBlockText(Config const& cfg, LookInfo const& info, std::string
             d.emission ? labelled(localeCode, "Emission", info.emission, c) : std::string{},
         })
     );
-    appendExtras(lines, info.extras, d.extras);
+    appendExtras(lines, info.extras, d.extras, info.extrasLine);
     return joinLines(lines);
 }
 
@@ -300,7 +308,7 @@ std::string renderEntityText(Config const& cfg, LookInfo& info, std::string cons
         lines.push_back(colored(c.label, tr(localeCode, "Armor")) + " " + value);
     }
 
-    appendExtras(lines, info.extras, e.extras);
+    appendExtras(lines, info.extras, e.extras, info.extrasLine);
     return joinLines(lines);
 }
 

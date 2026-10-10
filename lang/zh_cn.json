@@ -286,5 +286,11 @@
   "blocks/s": "方块/秒",
   "blocks": "方块",
   "Yes": "是",
-  "No": "否"
+  "No": "否",
+  "Item icons": "物品图标",
+  "Icons per row": "每行图标数",
+  "Icon limit": "图标上限",
+  "Invalid extras.chestIconsPerRow (1..27)": "无效的 extras.chestIconsPerRow（1..27）",
+  "Invalid extras.chestIconLimit (0..54)": "无效的 extras.chestIconLimit（0..54）",
+  "Merge stacks": "合并同类项"
 }

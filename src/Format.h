@@ -65,6 +65,11 @@ struct LookInfo {
     int         z        = 0;
     double      distance = 0.0;
     std::string dimName; // overworld / nether / the_end
+
+    // The first line the extras block landed on (see setExtrasLine below), so the client
+    // can work out which of the text's lines a container's icons belong to. -1 when the
+    // subject has no extras.
+    int extrasLine = -1;
 };
 
 // Builds the LookInfo for one hit block. The display name is resolved with
@@ -85,7 +90,7 @@ makeEntityLookInfo(std::string const& entityName, std::string const& entityType,
 // The entity renderer takes the info by reference because it reports back where the
 // hit points and the armour ended up (LookInfo::healthLine / armorLine): the client
 // draws sprites over those two lines when the subject qualifies for them.
-[[nodiscard]] std::string renderBlockText(Config const& cfg, LookInfo const& info, std::string const& localeCode);
+[[nodiscard]] std::string renderBlockText(Config const& cfg, LookInfo& info, std::string const& localeCode);
 [[nodiscard]] std::string renderEntityText(Config const& cfg, LookInfo& info, std::string const& localeCode);
 
 // The text shown when nothing is targeted (showEmpty is on): the configured empty

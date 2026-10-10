@@ -407,6 +407,9 @@ std::vector<Group> const& groups() {
               [] { return boolText(Insight::cfg().extras.respawnAnchor); }},
              {"extras.misc", "Block states", Kind::Bool, 0, 0, 0, {}, [] { return boolText(Insight::cfg().extras.misc); }},
          }},
+        // The container icon options (extras.chestIcons*) are drawn by the client's overlay:
+        // a server has no screen, so they would do nothing here and are left out, exactly like
+        // the other client-only options above.
         {"Extras: entities",
          {
              {"entityExtras.owner",

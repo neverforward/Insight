@@ -286,5 +286,11 @@
   "blocks/s": "blocks/s",
   "blocks": "blocks",
   "Yes": "Yes",
-  "No": "No"
+  "No": "No",
+  "Item icons": "Item icons",
+  "Icons per row": "Icons per row",
+  "Icon limit": "Icon limit",
+  "Invalid extras.chestIconsPerRow (1..27)": "Invalid extras.chestIconsPerRow (1..27)",
+  "Invalid extras.chestIconLimit (0..54)": "Invalid extras.chestIconLimit (0..54)",
+  "Merge stacks": "Merge stacks"
 }

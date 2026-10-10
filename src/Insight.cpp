@@ -474,6 +474,24 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
         return setEnum(gConfig.entityExtras.petArmor, "entityExtras.petArmor", {"all", "damaged", "off"});
     }
 
+    // --- a container's contents drawn as item icons (client only, see BlockExtrasConfig) ---
+    if (lower == "extras.chesticonsperrow") {
+        long v = 0;
+        if (!parseInt(value, v) || v < 1 || v > 27) {
+            return {false, tr(localeCode, "Invalid extras.chestIconsPerRow (1..27)")};
+        }
+        gConfig.extras.chestIconsPerRow = static_cast<int>(v);
+        return finish({true, tr(localeCode, "set {0} = {1}", "extras.chestIconsPerRow", std::to_string(v))});
+    }
+    if (lower == "extras.chesticonlimit") {
+        long v = 0;
+        if (!parseInt(value, v) || v < 0 || v > 54) {
+            return {false, tr(localeCode, "Invalid extras.chestIconLimit (0..54)")};
+        }
+        gConfig.extras.chestIconLimit = static_cast<int>(v);
+        return finish({true, tr(localeCode, "set {0} = {1}", "extras.chestIconLimit", std::to_string(v))});
+    }
+
     // --- display switches: one per field the panel can show (DisplayOptions).
     // These are what replaced the format / entityFormat text templates. ---
     {
@@ -634,6 +652,8 @@ Insight::applyConfigEdit(std::string const& option, std::string const& value, st
                  ExtraSwitch{"extras.hardness",        &gConfig.extras.hardness       },
                  ExtraSwitch{"extras.blastResistance", &gConfig.extras.blastResistance},
                  ExtraSwitch{"extras.chest",           &gConfig.extras.chest          },
+                 ExtraSwitch{"extras.chestIcons",      &gConfig.extras.chestIcons     },
+                 ExtraSwitch{"extras.chestIconsMerge", &gConfig.extras.chestIconsMerge},
                  ExtraSwitch{"extras.bookshelf",       &gConfig.extras.bookshelf      },
                  ExtraSwitch{"extras.shelf",           &gConfig.extras.shelf          },
                  ExtraSwitch{"extras.lectern",         &gConfig.extras.lectern        },

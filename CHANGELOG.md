@@ -8,10 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      file (ffurrer2/extract-release-notes), so the version heading below has to
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
-## [0.4.0] - 2026-10-04
-
+## [Unreleased]
 ### Added
+- A container's contents are drawn as the items themselves, not as a count. On the client the
+  `Items 12/27 · 35` line is replaced by the game's own item icons - one per non-empty slot and as
+  large as the game draws an item in its own GUI, the stack size written small into the icon's corner the way
+  vanilla writes it, `extras.chestIconsPerRow`
+  icons per row and at most `extras.chestIconLimit` of them (0 = every item, the stacks that did not
+  fit are counted as a small `+n`). `extras.chestIconsMerge` (on by default) draws like terms as one
+  icon with their counts added up - six swords read as one sword with `6`, five stacks of 64 grass
+  blocks as `320` - instead of one icon per slot. The container's line is always the panel's last one
+  now, whatever else the block reports, so the icons sit at the bottom of the box; an empty container
+  has nothing to draw, so the client drops the line instead of reading `Items 0/27`, and
+  `extras.chestIcons: false` brings the plain line back. The icons come from the same source as the
+  numbers did, so an open container screen updates them as it is edited. A server-side channel carries
+  text and nothing else, so there the line stays as it was: `Items 12/27 · 35`.
 
+### Changed
+- Higher `Config` schema version (9) for the container icon options above, and (10) for merging like
+  terms on that row; an existing file is merged automatically.
+- The container icon options are drawn by the client's own overlay, so on a server they change
+  nothing: the server's `/insight gui` menu no longer lists them.
+
+## [0.4.0] - 2026-10-04
+### Added
 - Every part of the panel has a colour of its own. The `colors` group has one entry per part - `name`,
   `facing`, `identifier`, `translationKey`, `x`, `y`, `z`, `distance`, `label`, `value` and `health` -
   and each is a vanilla formatting code **without the `§`**: `"c"` means `§c`, and an empty value
@@ -39,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subject's whole scale, not for what is left of it, so hearts that have been lost stay visible as their
   background sprites.
 - `entity.heartsThreshold`, `entity.heartsPerRow`, `entity.healthDecimals` and `entity.armor`: how many
-  points still fit as icons (a subject whose *maximum* health is above the threshold keeps the numbers,
+  points still fit as icons (a subject whose _maximum_ health is above the threshold keeps the numbers,
   so a boss does not turn into a wall of hearts while a player or a zombie does get them), how many
   hearts fit on a row before the next one starts above it and overlaps the row below by half a heart
   (in the bar styles it is the bar's width instead), whether the hit points carry one decimal, and
@@ -47,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On a **server** install the bar is spelled out in text, because that is all a vanilla channel
   carries: `█` per whole step, `▌` for half a step and the empty rest as the same `█` in the muted
   label colour - the same fixed-width track the client paints, red for the hit points by default. The
-  icon rows are deliberately *not* spelled out there: the font's glyph hearts read badly in a vanilla
+  icon rows are deliberately _not_ spelled out there: the font's glyph hearts read badly in a vanilla
   channel, so a server shows the numbers for those styles.
 - `/insight gui` opens a configuration **menu on the server** as well, since a server has no screen of
   its own: it pushes a group picker followed by one form per group to the player who asked. The values
@@ -73,8 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   game's own villager render controller reads the same two values as `query.variant` and
   `query.trade_tier` - and the profession names are the game's `entity.villager.*` translation keys, so
   they follow the player's language. Two of them are server-side state that the game never syncs to a
-  client: the copper golem's waxed flag (an entity *property* the game declares as not client-synced) and
-  a zombie villager's conversion *countdown* (only the "it is converting" flag is synced), so those lines
+  client: the copper golem's waxed flag (an entity _property_ the game declares as not client-synced) and
+  a zombie villager's conversion _countdown_ (only the "it is converting" flag is synced), so those lines
   appear on a server install and stay empty on a client.
 - Two of the requested entity adapters are **not** implemented, because the engine does not expose what
   they need: a baby's **growth time** (its component carries a raw age counter with no total and no
@@ -84,7 +104,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   world's random number generator, which is not something a display mod may do.
 
 ### Changed
-
 - Higher `Config` schema version (6) for the `colors` group; an existing file is merged
   automatically and keeps every value it already has.
 - Higher `Config` schema version (7) as well, for the entity display options above; an existing file
@@ -101,7 +120,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings, the language and the key bindings do nothing there.
 
 ### Removed
-
 - The `server.channel: "popup"` value is gone. A popup sent as a text packet made the client
   reject it and drop the connection (the "Block" error on join, "There was an issue with the
   Minecraft data being sent or received"), so the channel is removed rather than kept as a trap.
@@ -109,7 +127,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other value the channel list does not know. `actionbar` and `tip` remain.
 
 ### Fixed
-
 - A block container's contents no longer turn into the player's own inventory once its screen
   has been opened. The screen's models map holds the player's inventory models next to the block's,
   and the player's main inventory has exactly as many slots as a chest (27), so matching by slot
@@ -151,21 +168,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server-side line: the game declares that property as not client-synced, so a client would only ever
   read the default and say "no" about a golem that is in fact waxed.
 - The breeding line appears for a client as well: the counters are server-side state, so the line falls
-  back to the "in love" flag the client *is* told (`Breeding In love`) instead of staying empty because
+  back to the "in love" flag the client _is_ told (`Breeding In love`) instead of staying empty because
   the component is missing there.
 
 ## [0.3.1] - 2026-10-02
-
 ### Fixed
-
 - The README says **LeviLamina 26.51.\*** on both sides now, which is what `tooth.json` declares and
   what the mod is built against; 0.3.0 already required 26.51 in `tooth.json` while its README still
   said 26.40.
 
 ## [0.3.0] - 2026-10-01
-
 ### Added
-
 - The panel fades in when the info display appears and out when it disappears; when the crosshair
   moves to another block or entity the same panel resizes its box from the size it had. The lines are
   swapped at once and nothing is faded while that happens, so changing the subject never flashes.
@@ -197,7 +210,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `extras.misc`, which reports the four armor slots plus the main and off hand.
 
 ### Changed
-
 - Requires **LeviLamina 26.51.\*** (Bedrock 26.51) on both sides: the client variant wants the
   LeviLamina client build (`#client`), the server variant the plain one, and both are built against
   26.51 now, so a 0.2.0 install on 26.40 has to update LeviLamina first.
@@ -236,7 +248,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Preview and Appearance stay in the right column.
 
 ### Removed
-
 - `format`, `entityFormat` and the per-block-type format `overrides`
   (`{ "match": ..., "format": ... }`), together with their placeholders (`{blockName}`,
   `{blockType}`, `{blockKey}`, `{x}` `{y}` `{z}`, `{dist}`, `{dim}`, `{direction}`, `{light}`,
@@ -245,7 +256,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them.
 
 ### Fixed
-
 - The subject icon was centred on the whole panel, so a block with many extra lines left it
   floating in the middle of the box, away from the name it belongs to. It sits at the top of its
   cell now, level with the first text line, and it is one and a half text lines tall (measured from
@@ -258,9 +268,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validated (`Invalid number value: bogus`).
 
 ## [0.2.0] - 2026-09-25
-
 ### Added
-
 - Per-block extra info with **one switch per adapter** (`extras.*`), so every line can be silenced on
   its own - in the configuration screen or with `/insight set extras.<name> true`: breaking time,
   explosion resistance, container occupancy, chiseled bookshelf, shelf, lectern, decorated pot,
@@ -282,7 +290,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   translated once, when the command is registered.
 
 ### Changed
-
 - Requires **LeviLamina 26.40.\*** (Bedrock 26.40); the sources no longer compile against 26.20.
 - The client command is named `/cliinsight` rather than `/insight`, so a client and a server install
   can coexist: joining a world merges the server's command list into the client registry, which
@@ -296,13 +303,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   smoker - instead of assuming a furnace everywhere.
 
 ### Removed
-
 - The note block pitch/instrument and the ignite chance extras: neither is reachable through the
   26.40 API, so their switches were removed together with the code instead of showing guessed
   values.
 
 ### Fixed
-
 - `/insight` was unknown on a dedicated server even though the mod was enabled: LeviLamina publishes
   its command-registration event while the server instance is still being built, but enables mods
   later, so the command is now registered directly when the mod is enabled (with a log line to
@@ -316,9 +321,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client-side. The subcommand is registered only where there is a screen to open.
 
 ## [0.1.0] - 2026-09-18
-
 ### Added
-
 - Client configuration screen (Dear ImGui), opened with `/insight gui` or a hotkey and modal while it
   is open: every option in grouped sections with an inline editor (switch, slider, combo box,
   multi-line text, key binding), the appearance settings, a live preview of the panel, a status line
@@ -329,7 +332,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the anchor positions are shown as translated labels instead of their raw tokens.
 
 ### Changed
-
 - The configuration screen takes its input from Dear ImGui's Win32 backend through a window-procedure
   hook, so clicking, dragging, scrolling and text editing behave like a normal desktop window. While
   it is open the game receives neither mouse nor keyboard messages, and raw mouse input no longer
@@ -352,12 +354,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically.
 
 ### Removed
-
 - The first, engine-event based input path of the configuration screen (cursor mapping, synthetic
   clicks and the software cursor) together with the debug output used while working on it.
 
 ### Fixed
-
 - Changing one option could make every further change do nothing (the queued edits were applied after
   the "mod or overlay switched off" shortcut that editing those very options triggers).
 - Two edits made between two ticks of the game thread could drop the earlier one; edits are queued
@@ -371,23 +371,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enum options showed their raw tokens (`top_left`, `on`) instead of a readable, translated label.
 
 ## [0.0.3] - 2026-09-16
-
 ### Fixed
-
 - fixed tooth.json
 
 ## [0.0.2] - 2026-09-13
-
 ### Fixed
-
 - fixed tooth.json
 
 ## [0.0.1] - 2026-09-12
-
 First release: the mod template has been turned into the actual mod.
 
 ### Added
-
 - Server build (BDS) that samples every online player's look ray on a fixed cadence and sends the
   formatted info to that player only, through a configurable channel
   (`actionbar` / `tip` / `popup` / `jukebox` / `system` / `chat` / `none`).
@@ -418,14 +412,12 @@ First release: the mod template has been turned into the actual mod.
   Chinese.
 
 ### Changed
-
 - Detection is data-driven: the engine is asked directly (health attribute,
   `Block::isContainerBlock()`, material liquids, block actor types, block states, dimension name)
   instead of the mod keeping lists of block and entity ids.
 - Documentation is user-facing; implementation notes live in code comments.
 
 ### Removed
-
 - The mod template leftovers (`src/mod/MyMod.*`).
 
 [Unreleased]: https://github.com/neverforward/Insight/compare/v0.4.0...HEAD
