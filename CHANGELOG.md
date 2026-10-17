@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The container icon options are drawn by the client's own overlay, so on a server they change
   nothing: the server's `/insight gui` menu no longer lists them.
 
+### Removed
+- The pale one-unit outline around the info panel. The box is its rounded background fill and
+  nothing else now; `client.background: false` still removes the box entirely.
+
 ## [0.4.0] - 2026-10-04
 ### Added
 - Every part of the panel has a colour of its own. The `colors` group has one entry per part - `name`,

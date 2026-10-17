@@ -1482,18 +1482,10 @@ void ClientLogic::drawPanelNative(ll::event::render::AfterUIRenderEvent& event) 
     if (cfg.client.background) {
         float const alpha = std::clamp(cfg.client.backgroundAlpha, 0.0f, 1.0f) * mNativeFade;
         float const radius = std::max(0.0f, std::round(3.0f * fontScale));
-        // A rounded outline is the outline colour drawn as a rounded rectangle with the panel
-        // fill laid over it one unit in - there is no rounded stroke to draw.
-        roundedFill(boxL, boxT, boxR, boxB, mce::Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.3f * alpha, radius);
-        roundedFill(
-            boxL + 1.0f,
-            boxT + 1.0f,
-            boxR - 1.0f,
-            boxB - 1.0f,
-            mce::Color{0.0f, 0.0f, 0.0f, 1.0f},
-            alpha,
-            std::max(0.0f, radius - 1.0f)
-        );
+        // The panel is the rounded fill and nothing else. There used to be a pale outline under it
+        // (a white rounded rectangle one unit larger with the fill laid over it, because the UI has
+        // no rounded stroke to draw), which read as a light border around the box; it is gone.
+        roundedFill(boxL, boxT, boxR, boxB, mce::Color{0.0f, 0.0f, 0.0f, 1.0f}, alpha, radius);
     }
 
     // The icon, drawn by the game's item renderer in these same units. Lamium flushes the
