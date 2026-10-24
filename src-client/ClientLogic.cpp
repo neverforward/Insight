@@ -68,6 +68,8 @@
 #include "ll/api/event/client/ClientExitLevelEvent.h"
 #include "ll/api/event/input/KeyInputEvent.h"
 #include "ll/api/event/input/MouseInputEvent.h"
+#include "ll/api/event/world/ServerLevelTickEvent.h"
+#include "ll/api/service/Bedrock.h"
 #include "ll/api/input/KeyRegistry.h"
 #include "ll/api/memory/Hook.h"
 
@@ -119,6 +121,10 @@ void clearTextEditSelected() {
     gTextEditSelected.clear();
 }
 
+// The client logic instance the level tick hook reaches. The hook runs on the server's thread and
+// cannot hold the mod's own pointer, so the instance publishes itself here while it is enabled.
+std::atomic<ClientLogic*> gClientLogic{nullptr};
+
 // The hook macro always declares the counter its auto-registering variants use for
 // reference counting; this hook registers by hand (enable/disable), so it is left
 // unused and /W4 says so. Suppressed here rather than referenced, because touching it
@@ -136,6 +142,28 @@ LL_TYPE_INSTANCE_HOOK(
 ) {
     setTextEditSelected(this, &textEditComponent, state);
     origin(textEditComponent, state);
+}
+
+// The level of a world this game hosts is ticked on the server's own thread, and that is the only
+// place its world may be read from. The server level tick *event* is not dispatched in this build -
+// a hosted world raised none at all, while `ll::service::getLevel()` does hand out that very level -
+// so the level's own tick is hooked instead.
+LL_TYPE_INSTANCE_HOOK(
+    InsightLevelTickHook,
+    ll::memory::HookPriority::Normal,
+    Level,
+    &Level::$tick, // the plain method: a virtual one needs the $ thunk (Lamium's hook requirement)
+    void
+) {
+    origin();
+    auto* logic = gClientLogic.load();
+    if (logic == nullptr) {
+        return;
+    }
+    auto host = ll::service::getLevel();
+    if (host.has_value() && host.as_ptr() == this) {
+        logic->updateServerLook(*this);
+    }
 }
 #pragma clang diagnostic pop
 
@@ -717,7 +745,7 @@ bool ClientLogic::enable() {
     if (InsightTextEditHook::hook(true) != 0) {
         logger.warn("text edit focus hook not installed; the hotkeys may fire while typing");
     }
-    mListeners.emplace_back(bus.emplaceListener<ll::event::client::ClientExitLevelEvent>([](auto&) {
+    mListeners.emplace_back(bus.emplaceListener<ll::event::client::ClientExitLevelEvent>([this](auto&) {
         // Leaving the world drops every screen: any text box that was still selected
         // would keep the hotkeys quiet forever.
         clearTextEditSelected();
@@ -725,7 +753,15 @@ bool ClientLogic::enable() {
         // Everything cached by block position or by an address in the level belongs to the world
         // being left - the next one reuses both.
         resetRuntimeState();
+        clearServerLook();
     }));
+    // The complete world of a local save lives on the server's thread. That thread's tick is
+    // hooked (the server level tick event is not dispatched in this build), and the instance
+    // publishes itself so the hook can be reached from there.
+    gClientLogic.store(this);
+    if (InsightLevelTickHook::hook(true) != 0) {
+        logger.warn("level tick hook not installed; a local save's own data cannot be read");
+    }
 
     logger.info("Client mode enabled (GDK). overlay={}", Insight::cfg().client.showOverlay);
     return true;
@@ -738,6 +774,8 @@ void ClientLogic::disable() {
     }
     mListeners.clear();
     InsightTextEditHook::unhook(true);
+    InsightLevelTickHook::unhook(true);
+    gClientLogic.store(nullptr);
     clearTextEditSelected();
     gHotkeyContext = false;
     mVisible = false;
@@ -821,6 +859,180 @@ void ClientLogic::pushOverlay() {
         }
     }
     mOverlay.setContent(std::move(content));
+}
+
+bool ClientLogic::takeServerLook(
+    int                dimensionId,
+    BlockPos const&    pos,
+    std::string&       extras,
+    ContainerContents& contents
+) {
+    std::lock_guard lock(mServerMutex);
+    auto const&     look = mServerLook;
+    if (!look.blockValid || look.dimensionId != dimensionId || look.x != pos.x || look.y != pos.y || look.z != pos.z
+        || std::chrono::steady_clock::now() - look.seen > std::chrono::milliseconds(400)) {
+        return false;
+    }
+    extras   = look.extras;
+    contents = look.contents;
+    return true;
+}
+
+bool ClientLogic::takeServerEntityLook(float x, float y, float z, std::string& extras, ContainerContents& contents) {
+    std::lock_guard lock(mServerMutex);
+    auto const&     look = mServerLook;
+    if (!look.entityValid || std::chrono::steady_clock::now() - look.seen > std::chrono::milliseconds(400)) {
+        return false;
+    }
+    // Where it stands, not which id it has: the client and the server halves of a local world keep
+    // their own actor copies, so the ids need not agree.
+    float const dx = look.entityX - x;
+    float const dy = look.entityY - y;
+    float const dz = look.entityZ - z;
+    if (dx * dx + dy * dy + dz * dz > 0.75f * 0.75f) {
+        return false;
+    }
+    extras   = look.entityExtras;
+    contents = look.entityContents;
+    return true;
+}
+
+void ClientLogic::requestServerLook(bool hasBlock, int dimensionId, BlockPos const& pos) {
+    std::lock_guard lock(mServerMutex);
+    mServerRequest.requested = hasBlock;
+    if (hasBlock) {
+        mServerRequest.dimensionId = dimensionId;
+        mServerRequest.x           = pos.x;
+        mServerRequest.y           = pos.y;
+        mServerRequest.z           = pos.z;
+    }
+}
+
+void ClientLogic::clearServerLook() {
+    mServerLevel.store(nullptr);
+    std::lock_guard lock(mServerMutex);
+    mServerLook     = ServerLook{};
+    mServerRequest  = ServerRequest{};
+    mLocalPlayerName.clear();
+}
+
+void ClientLogic::updateServerLook(Level& level) {
+    mServerLevel.store(&level);
+
+    // The panel's own target, copied out of the shared slot: the server reads exactly that block.
+    ServerRequest request;
+    std::string   playerName;
+    {
+        std::lock_guard lock(mServerMutex);
+        request    = mServerRequest;
+        playerName = mLocalPlayerName;
+    }
+
+    // The player is found by name: the client's own actor copy does not have to carry the id the
+    // server knows it by. A world hosted with several players in it still resolves correctly.
+    Player* local   = nullptr;
+    int     players = 0;
+    level.forEachPlayer([&](Player& candidate) {
+        ++players;
+        if (local == nullptr && !playerName.empty() && candidate.getNameTag() == playerName) {
+            local = &candidate;
+        }
+        return true;
+    });
+    {
+        // Says whether this hook is really running on the level of a local save at all, and whether
+        // the player on it was recognised.
+        static std::chrono::steady_clock::time_point lastReport{};
+        auto const                                   now = std::chrono::steady_clock::now();
+        if (now - lastReport > std::chrono::seconds(2)) {
+            lastReport = now;
+            Insight::getInstance().getSelf().getLogger().info(
+                "[save] level tick: players={} name='{}' player={} request={}",
+                players,
+                playerName,
+                local != nullptr ? "found" : "none",
+                request.requested ? "block" : "none"
+            );
+        }
+    }
+    if (local == nullptr) {
+        return;
+    }
+    // The server's own world, read on the server's own thread: block states, block entities,
+    // container contents and entity state are all complete here, unlike the copy the client is
+    // sent.
+    auto const& cfg    = Insight::cfg();
+    auto&       region = local->getDimensionBlockSource();
+    auto const  origin = local->getEyePos();
+    auto const  dir    = local->getViewVector(0.0f);
+
+    std::string lang = cfg.client.language;
+    lang             = insight::resolveLanguageCode(lang, [] {
+        try {
+            return getI18n().getCurrentLanguage()->getFullLanguageCode();
+        } catch (...) {
+            return std::string{};
+        }
+    }());
+
+    ServerLook look;
+    look.dimensionId = static_cast<int>(region.getDimensionId());
+    look.seen        = std::chrono::steady_clock::now();
+
+    if (request.requested && request.dimensionId == look.dimensionId) {
+        BlockPos const pos{request.x, request.y, request.z};
+        auto const&    block = region.getBlock(pos);
+        look.x               = pos.x;
+        look.y               = pos.y;
+        look.z               = pos.z;
+        look.extras   = buildBlockExtras(region, pos, block.getTypeName(), lang, cfg.extras, &look.contents);
+        look.blockValid = true;
+    }
+
+    // The same targeting rule the panel uses: the nearest entity on the ray wins, unless the block
+    // is in front of it (a painting or an item frame hangs on the block face and ties with it).
+    if (cfg.entityEnabled) {
+        auto entHit = findLookEntity(region, local, origin, dir, cfg.maxDistance);
+        if (entHit.actor != nullptr) {
+            auto const& epos = entHit.actor->getPosition();
+            look.entityX     = static_cast<float>(epos.x);
+            look.entityY     = static_cast<float>(epos.y);
+            look.entityZ     = static_cast<float>(epos.z);
+            look.entityId    = static_cast<std::int64_t>(entHit.actor->getOrCreateUniqueID().rawID);
+            look.entityExtras = buildEntityExtras(
+                region,
+                *entHit.actor,
+                lang,
+                cfg.extras,
+                cfg.entityExtras,
+                &look.entityContents,
+                // the server half of a local save owns the state a client is never sent (a copper
+                // golem's waxed flag, the complete effect list, breeding and converting timers)
+                true
+            );
+            look.entityValid = true;
+        }
+    }
+
+    {
+        // A line every couple of seconds, so the log says whether the server half of a local save is
+        // really reachable from the client at all (a remote session has no such level, and then the
+        // answer is simply never used).
+        static std::chrono::steady_clock::time_point lastReport{};
+        auto const                                   now = std::chrono::steady_clock::now();
+        if (now - lastReport > std::chrono::seconds(2)) {
+            lastReport = now;
+            Insight::getInstance().getSelf().getLogger().info(
+                "[save] server tick: block={} entity={}",
+                look.blockValid
+                    ? (std::to_string(look.x) + "," + std::to_string(look.y) + "," + std::to_string(look.z))
+                    : std::string{"none"},
+                look.entityValid ? std::to_string(look.entityId) : std::string{"none"}
+            );
+        }
+    }
+    std::lock_guard lock(mServerMutex);
+    mServerLook = std::move(look);
 }
 
 void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
@@ -908,6 +1120,32 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
         mHadHit           = false;
         mLastSample       = {};
         mRefreshRequested = true;
+        clearServerLook();
+    }
+    // Which player the server half of the game should look for, so its own world can be read the
+    // way the panel reads the client's copy: by name, because the client's actor copy does not have
+    // to carry the id the server knows the player by.
+    {
+        std::lock_guard lock(mServerMutex);
+        mLocalPlayerName = localPlayer != nullptr ? localPlayer->getNameTag() : std::string{};
+    }
+    {
+        // Once per run: are the other ways of reaching a local save's world there too, in case the
+        // server tick event never fires in this build?
+        static bool loggedTransports = false;
+        if (!loggedTransports && client.getLevel() != nullptr) {
+            loggedTransports = true;
+            auto instance     = ll::service::getServerInstance();
+            auto serviceLevel = ll::service::getLevel();
+            Insight::getInstance().getSelf().getLogger().info(
+                "[save] transports: serverInstance={} serviceLevel={} sameAsClientLevel={}",
+                instance.has_value() ? "yes" : "no",
+                serviceLevel.has_value() ? "yes" : "no",
+                (static_cast<void const*>(serviceLevel.as_ptr()) == static_cast<void const*>(client.getLevel()))
+                    ? "yes"
+                    : "no"
+            );
+        }
     }
 
 
@@ -996,6 +1234,11 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
     auto& region = localPlayer->getDimensionBlockSource();
     auto  hit    = raycastToBlock(region, origin, dir, static_cast<double>(cfg.maxDistance), cfg.passThroughLiquids);
 
+    // Hand the target to the server thread: it reads exactly this block out of the complete world.
+    // A ray of its own would trail a tick behind the camera, and wherever the two disagreed the
+    // panel fell back to the client's copy - visible as the panel catching up late while turning.
+    requestServerLook(hit.has_value(), static_cast<int>(region.getDimensionId()), hit ? hit->pos : BlockPos{});
+
     bool targetChanged = hit ? !(mHadHit && mLastHitPos == hit->pos && mLastHitType == hit->typeName) : mHadHit;
     bool forceRefresh  = mRefreshRequested;
     mRefreshRequested  = false;
@@ -1051,8 +1294,24 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             );
             info.distance = entityDist;
             info.dimName  = clientDimName(region);
-            mContainer    = ContainerContents{};
-            info.extras   = buildEntityExtras(region, *entity, lang, cfg.extras, cfg.entityExtras, &mContainer);
+            mContainer            = ContainerContents{};
+            std::string serverExtras;
+            auto const& entityPos  = entity->getPosition();
+            bool const  fromServer = takeServerEntityLook(
+                static_cast<float>(entityPos.x),
+                static_cast<float>(entityPos.y),
+                static_cast<float>(entityPos.z),
+                serverExtras,
+                mContainer
+            );
+            if (fromServer) {
+                // Entity state a server keeps to itself - a copper golem's waxed flag, an animal's
+                // owner, breeding and converting timers, the full effect list - is only visible
+                // through the local save's own world.
+                info.extras = std::move(serverExtras);
+            } else {
+                info.extras = buildEntityExtras(region, *entity, lang, cfg.extras, cfg.entityExtras, &mContainer);
+            }
             // The entity panel has its own layout (renderEntityText): the entity's own
             // yaw as the facing, its position, and hit points - but no light level and
             // no emission, which describe a world position, not the entity.
@@ -1122,8 +1381,23 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
         } else if (hit) {
             auto info      = makeBlockLookInfo(*hit, lang);
             info.dimName   = clientDimName(region);
-            mContainer     = ContainerContents{};
-            info.extras    = buildBlockExtras(region, hit->pos, hit->typeName, lang, cfg.extras, &mContainer);
+            // The local save's own view of the block comes first: a world this game hosts keeps
+            // its server half in this process, and that half knows the complete block - a
+            // furnace's three slots, a chest the client was never told about - where the copy the
+            // client is sent is partial. The text is built by the same builder either way.
+            mContainer            = ContainerContents{};
+            std::string serverExtras;
+            bool const  fromServer = takeServerLook(
+                static_cast<int>(region.getDimensionId()),
+                hit->pos,
+                serverExtras,
+                mContainer
+            );
+            if (fromServer) {
+                info.extras = std::move(serverExtras);
+            } else {
+                info.extras = buildBlockExtras(region, hit->pos, hit->typeName, lang, cfg.extras, &mContainer);
+            }
             info.direction = describeBlockFacing(region, hit->pos, lang);
             info.light     = describeBlockLight(region, hit->pos);
             info.emission  = describeBlockEmission(region, hit->pos);

@@ -86,6 +86,16 @@ The client can also edit the configuration in a screen instead of the chat:
   saved immediately (the footer reports what happened);
 - while the screen is open the game does not receive keyboard/mouse input.
 
+### Reading the local save (client)
+
+A world this game hosts itself keeps its server half in the same process, and that half holds the
+complete world: block entities with all of their slots, containers the client was never told about,
+machine counters. In such a world the panel reads the block on the crosshair out of the server's own
+level - the look is handed to the server tick, so the read happens on the thread that owns that world
+- and shows what the server sees instead of the partial copy a client is sent over the network. A
+remote session has no such level, so there the panel keeps reading the client's world (and the
+display can be left to the server's own chat output with `overlayOnRemote`).
+
 ### Configuration menu (server)
 
 A server has no screen of its own, so `/insight gui` pushes a **form** to the player who asked: a group

@@ -99,20 +99,33 @@ void resetRuntimeState();
 // `pos` (used by the debug log to calibrate state names).
 [[nodiscard]] std::string describeBlockStateNames(IConstBlockSource const& region, BlockPos const& pos);
 
+// Whether the world copy this build reads carries the state a client is normally never sent: an
+// entity's complete effect list, a copper golem's waxed flag, a furnace's cooking counter. A
+// server build owns it. A client build only ever has the partial networked copy - unless it is
+// reading the server half of a local save, which is what the last argument is for.
+#ifdef INSIGHT_TARGET_CLIENT
+inline constexpr bool kOwnWorldIsComplete = false;
+#else
+inline constexpr bool kOwnWorldIsComplete = true;
+#endif
+
 // Extra lines for the entity under the crosshair: container minecarts / boats
 // ("物品 n/m"), paintings, the worn equipment, and the entity adapters of
 // EntityExtrasConfig (owner, status effects, breeding timer, conversion time, pet
 // armour, mount numbers, an armour stand's pose). {light}/{direction} are separate
 // placeholders and are not repeated here. `opt.enabled` gates every adapter, block
 // and entity alike. When `contents` is given, a container entity's items are
-// reported there as well.
+// reported there as well. `completeData` says the caller's world holds the state a
+// client is not sent (see kOwnWorldIsComplete); lines that would otherwise be a guess
+// are only built when it is true.
 [[nodiscard]] std::string buildEntityExtras(
     IConstBlockSource const&  region,
     Actor const&              actor,
     std::string const&        langCode,
     BlockExtrasConfig const&  opt,
     EntityExtrasConfig const& entityOpt,
-    ContainerContents*        contents = nullptr
+    ContainerContents*        contents     = nullptr,
+    bool                      completeData = kOwnWorldIsComplete
 );
 
 } // namespace insight

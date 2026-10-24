@@ -197,12 +197,12 @@ std::string clockText(int ticks) {
 }
 
 // A roman numeral for an effect level, the way the vanilla effect list writes it.
-#ifndef INSIGHT_TARGET_CLIENT
-// The effect line is server-side only: a client is never sent more than the *latest*
-// effect of another creature (its list holds that one entry plus empty slots, where a
-// server holds the complete list - 19 slots with the real ones in their id places), so
-// on a client the line could only ever show one effect and then vanish with it. These
-// helpers are therefore compiled for the server alone.
+// The effect line needs the complete effect list: a client's networked copy holds only the *latest*
+// effect of another creature (one entry plus empty slots, where a server holds the complete list -
+// 19 slots with the real ones in their id places), so the line could only ever show one effect and
+// then vanish with it. The helpers are compiled on both sides now and the line itself is built only
+// when the caller says its world is complete (see kOwnWorldIsComplete): a server always, a client
+// only when it is reading the server half of a local save.
 
 // A roman numeral for an effect level, the way the vanilla effect list writes it.
 std::string romanLevel(int level) {
@@ -247,7 +247,6 @@ std::string effectValue(std::string const& langCode, MobEffectInstance const& ef
     std::string const level = named && effect.mAmplifier > 0 ? " " + romanLevel(effect.mAmplifier + 1) : std::string{};
     return name + level + " " + clockText(effect.mDuration->mValue);
 }
-#endif
 
 // An attribute's raw value, or nothing when the entity has no such attribute at all.
 std::optional<float> attributeValue(Actor const& actor, Attribute const& attribute) {
@@ -359,9 +358,8 @@ std::string villagerProfession(Actor const& actor, std::string const& langCode) 
 
 // Whether a copper golem is waxed. The engine has no member, component or actor-data
 // id for it - the state is an entity *property*, which the game's own JSON declares as
-// "minecraft:is_waxed". A client is never sent that property, so this whole reader is
-// server-side (see the caller).
-#ifndef INSIGHT_TARGET_CLIENT
+// "minecraft:is_waxed". A client is never sent that property, so the line is built only
+// when the caller's world is complete (see kOwnWorldIsComplete).
 bool copperGolemWaxed(Actor const& actor) {
     auto const properties = actor.getEntityContext().tryGetComponent<PropertyComponent>();
     if (!properties) {
@@ -369,7 +367,6 @@ bool copperGolemWaxed(Actor const& actor) {
     }
     return properties->tryGetBool(HashedString::computeHash("minecraft:is_waxed")).value_or(false);
 }
-#endif
 
 // ---------------------------------------------------------------------------
 // Debug diagnostics: these run on every sampling round, so they are emitted
@@ -1664,7 +1661,8 @@ std::string buildEntityExtras(
     std::string const&        langCode,
     BlockExtrasConfig const&  opt,
     EntityExtrasConfig const& entityOpt,
-    ContainerContents*        contents
+    ContainerContents*        contents,
+    bool                      completeData
 ) {
     // kept for signature symmetry with buildBlockExtras(); entity extras only
     // read actor components, so no block sampling happens here.
@@ -1793,9 +1791,9 @@ std::string buildEntityExtras(
     // in the slots that are not in use, which the loop filters out. A client is only
     // ever sent the latest effect of another creature, so this line is deliberately not
     // drawn there - one effect that then vanishes with it would be a lie, and guessing
-    // the rest is not something a panel should do.
-#ifndef INSIGHT_TARGET_CLIENT
-    if (entityOpt.effects) {
+    // the rest is not something a panel should do. It is built only when the caller's world really
+    // holds the complete list: a server, or a client reading the server half of a local save.
+    if (completeData && entityOpt.effects) {
         std::vector<std::string> values;
         for (auto const& effect : actor.getAllEffects()) {
             if (validEffectId(effect.mId)) {
@@ -1822,7 +1820,6 @@ std::string buildEntityExtras(
             lines.push_back(labelText(langCode, "Effects") + " " + text);
         }
     }
-#endif
 
     // ---- breeding timer ---------------------------------------------------
     // Whichever timer is running: the love timer of an animal that was fed, or the
@@ -1945,13 +1942,12 @@ std::string buildEntityExtras(
     // ---- copper golem: waxed ----------------------------------------------
     // The game declares this property as *not* client-synced, so a client can only ever
     // read its default value - showing "No" for a golem that is in fact waxed would be
-    // worse than showing nothing, so this line belongs to the side that owns the state.
+    // worse than showing nothing, so the line is built only when the caller's world really owns
+    // the state (a server, or a client reading the server half of a local save).
     // The value is the plain yes/no a player expects, not the on/off of a switch.
-#ifndef INSIGHT_TARGET_CLIENT
-    if (entityOpt.waxed && actor.isType(ActorType::CopperGolem)) {
+    if (completeData && entityOpt.waxed && actor.isType(ActorType::CopperGolem)) {
         lines.push_back(textLine(langCode, "Waxed", tr(langCode, copperGolemWaxed(actor) ? "Yes" : "No")));
     }
-#endif
 
     if (!chestText.empty()) {
         if (contents != nullptr) {

@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- In a world this game hosts itself - a local save - the panel reads the block out of the server
+  half of the engine, which holds the complete world, instead of out of the networked copy the
+  client is sent: a container's contents and a machine's counters are then what the server sees
+  (a furnace that reads `1/3` holding one stack on the client now reports all three slots). The
+  look is handed to the server's own tick, so the world is read on the thread that owns it; a
+  remote session has no such level and keeps reading the client's world.
 - A container's contents are drawn as the items themselves, not as a count. On the client the
   `Items 12/27 · 35` line is replaced by the game's own item icons - one per non-empty slot and as
   large as the game draws an item in its own GUI, the stack size written small into the icon's corner the way

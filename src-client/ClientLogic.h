@@ -1,6 +1,9 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
+#include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -13,6 +16,8 @@
 #include "Extras.h"
 #include "ImGuiOverlay.h"
 #include "PlatformLogic.h"
+
+class Level;
 
 namespace insight {
 
@@ -27,6 +32,11 @@ public:
 
     bool enable() override;
     void disable() override;
+
+    /// Runs on the thread that ticks the hosted level (the server's own thread in a local save):
+    /// looks where the local player looks and keeps what that world says about it. Called from the
+    /// level tick hook, never from the panel.
+    void updateServerLook(Level& level);
 
 private:
     void onRender(ll::event::render::BeforeUIRenderEvent& event);
@@ -106,6 +116,61 @@ private:
     // The level the caches belong to. Leaving a world and loading another one reuses block
     // positions and level addresses, so every cache keyed by those is dropped in between.
     void const* mLastLevel = nullptr;
+
+    // The local save's own view of the world. A world this game hosts keeps its server half in
+    // this very process, and that half holds the complete world - a furnace's three slots, its
+    // cooking counter, a chest the client has not been told about - where the networked copy the
+    // client is sent is partial. The server tick therefore does the same look the panel does, on
+    // the server's level, and the panel uses that answer whenever it describes the block on the
+    // crosshair; a remote session has no level here, so the answer stays invalid and the panel
+    // reads the client's world as before.
+    struct ServerLook {
+        int                        dimensionId = 0;
+        int                        x           = 0;
+        int                        y           = 0;
+        int                        z           = 0;
+        std::string                extras;
+        ContainerContents          contents;
+        // The entity the same ray hits, when it wins over the block. Entity state that only a
+        // server has - a copper golem's waxed flag, an animal's owner, its breeding and
+        // converting timers, the whole list of its effects - never reaches the client at all, so
+        // that is the only way the panel can show it. Matched by position: the two halves of a
+        // local world do not have to agree on an actor's id.
+        std::int64_t               entityId = 0;
+        float                      entityX = 0.0f;
+        float                      entityY = 0.0f;
+        float                      entityZ = 0.0f;
+        std::string                entityExtras;
+        ContainerContents          entityContents;
+        std::chrono::steady_clock::time_point seen{};
+        bool                       blockValid  = false;
+        bool                       entityValid = false;
+    };
+    // What the panel is looking at, handed to the server thread. The server reads exactly that block
+    // out of the complete world instead of casting its own ray, which trails a tick behind the camera
+    // and made the panel fall back to the client's copy (and back) while turning.
+    struct ServerRequest {
+        bool requested   = false;
+        int  dimensionId = 0;
+        int  x           = 0;
+        int  y           = 0;
+        int  z           = 0;
+    };
+    std::atomic<Level*>                     mServerLevel = nullptr;
+    mutable std::mutex                      mServerMutex;
+    ServerLook                              mServerLook;
+    ServerRequest                           mServerRequest;
+    std::string                             mLocalPlayerName; // the name the server player is found by
+    /// What the server half of the game last saw at `pos`, if that is fresh enough to be about
+    /// the block on the crosshair right now.
+    bool takeServerLook(int dimensionId, BlockPos const& pos, std::string& extras, ContainerContents& contents);
+    /// The same for an entity, matched by where it stands (a local world's two halves do not share
+    /// actor ids).
+    bool takeServerEntityLook(float x, float y, float z, std::string& extras, ContainerContents& contents);
+    /// Tells the server thread which block the panel is looking at, or that it looks at nothing.
+    void requestServerLook(bool hasBlock, int dimensionId, BlockPos const& pos);
+    /// Forgets the server's answer, e.g. when the world is left.
+    void clearServerLook();
 
     /// Turns the container the extras builder reported (mContainer) into the panel's own
     /// item icon row: the line of the drawn text it replaces, the items themselves and how
