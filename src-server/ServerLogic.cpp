@@ -224,6 +224,14 @@ void ServerLogic::disable() {
 
 void ServerLogic::onTick(ll::event::ServerLevelTickEvent& event) {
     auto const& cfg = Insight::cfg();
+    // A world reload reuses block coordinates and level addresses, which is what the container
+    // snapshots and the cooking estimates are keyed by: drop them when the level changes, or the
+    // new world reads the previous one's contents.
+    static void const* lastLevel = nullptr;
+    if (void const* level = &event.level(); level != lastLevel) {
+        lastLevel = level;
+        insight::resetRuntimeState();
+    }
     if (!cfg.enabled) {
         return;
     }

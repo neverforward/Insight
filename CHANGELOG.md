@@ -33,6 +33,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - The pale one-unit outline around the info panel. The box is its rounded background fill and
   nothing else now; `client.background: false` still removes the box entirely.
+- The `Time left` and `Cook progress` lines of a furnace, blast furnace and smoker. A client is only
+  sent a partial, bursty copy of a machine's cooking counter, so the two lines could not be made to
+  agree with what the machine was doing; the slot line and the contents line stay.
+
+### Fixed
+- A furnace, blast furnace or smoker's contents follow the machine: while its screen is open they
+  come from the screen's own container models, which the engine fills with the live stacks - the
+  block entity's copy of them is partial or stale (a lit furnace can read `1/3` holding a single
+  stack while it really has ore, fuel and output). The models that wrap the block's container are
+  summed now, so the smoker and blast furnace screens are covered too: they reuse the very same
+  `furnace_*` models, which matching by the screen's name prefix missed. A furnace whose screen
+  was never opened still shows what its block entity has, since that is all a client is sent.
+- Leaving a world and loading another one no longer carries state over into the new one: the
+  container snapshots and the cooking estimates are keyed by block positions and by addresses in
+  the level's memory, both of which the next world reuses, so they are dropped when the level
+  changes.
 
 ## [0.4.0] - 2026-10-04
 ### Added

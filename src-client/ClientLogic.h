@@ -103,6 +103,9 @@ private:
     };
     PanelSprites mSprites;       // the current subject's sprite rows
     PanelSprites mShownSprites;  // the ones the drawn text belongs to
+    // The level the caches belong to. Leaving a world and loading another one reuses block
+    // positions and level addresses, so every cache keyed by those is dropped in between.
+    void const* mLastLevel = nullptr;
 
     /// Turns the container the extras builder reported (mContainer) into the panel's own
     /// item icon row: the line of the drawn text it replaces, the items themselves and how

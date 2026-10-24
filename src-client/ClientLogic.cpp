@@ -443,6 +443,21 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
         int                        bestSize   = 0;
         int                        bestTotal  = 0;
         std::vector<ContainerItem> bestItems;
+        // The models that wrap the block's very container, summed. A screen may spread one
+        // container over several of them - a furnace's three slots sit in three one-slot models
+        // (`furnace_ingredient_items` / `furnace_fuel_items` / `furnace_output_items`) - and a
+        // smoker's or blast furnace's screen reuses those very models, so a name prefix taken
+        // from the screen name does not find them. Summed they are the whole container; they are
+        // put back in the container's own slot order (ingredient, fuel, output) because the
+        // panel's icon row has to read like the machine's slots, not like the model map.
+        struct OwnModel {
+            std::string                key;
+            int                        size   = 0;
+            int                        filled = 0;
+            int                        total  = 0;
+            std::vector<ContainerItem> items;
+        };
+        std::vector<OwnModel> ownModels;
         for (auto const& [key, model] : *manager->mContainers) {
             if (!model) {
                 continue;
@@ -487,6 +502,10 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
             bool const preferred =
                 ownContainer
                 || (!playerInventory && (key == "container_items" || (blockSlots > 0 && size == blockSlots)));
+            if (ownContainer) {
+                // copied, not moved: the single-model fallback below may still need the list
+                ownModels.push_back(OwnModel{key, size, filled, total, items});
+            }
             if (dump) {
                 logger.debug(
                     "[ctr]   model '{}' size={} filled={}{}",
@@ -503,10 +522,43 @@ void captureOpenContainer(IClientInstance& client, std::string const& screenName
                 bestItems  = std::move(items);
             }
         }
-        // a container the screen split into pieces wins over the single-model
-        // guess when its total is exactly the block's slot count (or when nothing
-        // else was recognised at all)
-        if (splitSize > 0 && ((blockSlots > 0 && splitSize == blockSlots) || bestFilled < 0)) {
+        // The models that wrap the block's own container come first: summed they are the whole
+        // container whatever the screen calls them. Then a container the screen split into pieces
+        // matched by the screen's name prefix, then the single-model guess.
+        int ownSize = 0;
+        for (auto const& own : ownModels) {
+            ownSize += own.size;
+        }
+        if (!ownModels.empty() && (blockSlots <= 0 || ownSize == blockSlots)) {
+            // Back into the container's slot order. The furnace family names its three models
+            // after the slots they hold; anything else keeps the map's own order.
+            auto const slotRank = [](std::string const& key) {
+                if (key.find("ingredient") != std::string::npos) {
+                    return 0;
+                }
+                if (key.find("fuel") != std::string::npos) {
+                    return 1;
+                }
+                if (key.find("output") != std::string::npos || key.find("result") != std::string::npos) {
+                    return 2;
+                }
+                return 3;
+            };
+            std::stable_sort(ownModels.begin(), ownModels.end(), [&](OwnModel const& a, OwnModel const& b) {
+                int const ra = slotRank(a.key);
+                int const rb = slotRank(b.key);
+                return ra != rb ? ra < rb : a.key < b.key;
+            });
+            bestSize   = ownSize;
+            bestFilled = 0;
+            bestTotal  = 0;
+            bestItems.clear();
+            for (auto& own : ownModels) {
+                bestFilled += own.filled;
+                bestTotal  += own.total;
+                bestItems.insert(bestItems.end(), own.items.begin(), own.items.end());
+            }
+        } else if (splitSize > 0 && ((blockSlots > 0 && splitSize == blockSlots) || bestFilled < 0)) {
             bestSize   = splitSize;
             bestFilled = splitFilled;
             bestTotal  = splitTotal;
@@ -670,6 +722,9 @@ bool ClientLogic::enable() {
         // would keep the hotkeys quiet forever.
         clearTextEditSelected();
         gHotkeyContext = false;
+        // Everything cached by block position or by an address in the level belongs to the world
+        // being left - the next one reuses both.
+        resetRuntimeState();
     }));
 
     logger.info("Client mode enabled (GDK). overlay={}", Insight::cfg().client.showOverlay);
@@ -836,6 +891,24 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
     auto& ctx         = event.uiRenderContext();
     auto& client      = ctx.mClient; // IClientInstance&
     auto* localPlayer = client.getLocalPlayer();
+
+    // A world (re)load starts every cache afresh. The container snapshots and the cooking
+    // estimates are keyed by block positions and by addresses in the level's memory, and the
+    // next world reuses both - a leftover entry then reads as that world's own data (a chest
+    // showing the previous world's contents, a furnace estimate walking on items that are
+    // gone), which is exactly the "everything is buggy after reloading" report.
+    if (void const* level = client.getLevel(); level != mLastLevel) {
+        mLastLevel = level;
+        insight::resetRuntimeState();
+        mContainer = ContainerContents{};
+        mSprites   = PanelSprites{};
+        mItemIcons.clear();
+        mItemIconSource.clear();
+        mBoxKey           = {};
+        mHadHit           = false;
+        mLastSample       = {};
+        mRefreshRequested = true;
+    }
 
 
     if (!localPlayer || !client.getLevel()) {

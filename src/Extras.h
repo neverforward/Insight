@@ -84,6 +84,12 @@ void setLiveContainerSnapshot(BlockPos const& pos, std::vector<ContainerItem> co
 // chest), keyed by the actor's unique id.
 void setLiveEntityContainerSnapshot(int64_t actorId, std::vector<ContainerItem> const& items, int size);
 
+// Forgets every cache keyed by a block position, an actor id or an address in
+// the level's memory: the container snapshots and the cooking estimates. A
+// world reload reuses coordinates and pointers, so a leftover entry would be
+// read as the new world's own data. Call it whenever the level changes.
+void resetRuntimeState();
+
 // Container a block actor owns (26.40 keeps it on the actor's main component).
 // Exported because the client's live-snapshot code needs the same lookup to
 // recognise which of a screen's container models belongs to the block.

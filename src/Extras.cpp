@@ -376,8 +376,15 @@ bool copperGolemWaxed(Actor const& actor) {
 // once per change (same tag + position + message) instead of on every round.
 // The log level decides whether they show up at all.
 // ---------------------------------------------------------------------------
+std::map<std::tuple<std::string, int, int, int>, std::string>& loggedOnce() {
+    static std::map<std::tuple<std::string, int, int, int>, std::string> map;
+    return map;
+}
+
+void clearLoggedOnce() { loggedOnce().clear(); }
+
 void logOnce(ll::io::Logger& logger, char const* tag, BlockPos const& pos, std::string const& message) {
-    static std::map<std::tuple<std::string, int, int, int>, std::string> lastLogged;
+    static std::map<std::tuple<std::string, int, int, int>, std::string>& lastLogged = loggedOnce();
 
     if (!logger.shouldLog(ll::io::LogLevel::Debug)) {
         return;
@@ -650,13 +657,14 @@ std::string machineLine(BlockActor const* be, BlockPos const& pos, std::string c
     }
     std::vector<ContainerItem> const items  = readContainerItems(*c);
     int                              filled = static_cast<int>(items.size());
-    // Furnaces / brewing stands are block containers too: prefer the live
-    // snapshot captured from the open UI for the same reason as chestLine().
+    // Furnaces / brewing stands are block containers too: their screen models hold the live
+    // stacks while the block entity's own copy of them is partial or stale, so the snapshot
+    // taken from the open screen is the better source - the same rule as chestLine().
     auto& snapshots = liveSnapshots();
     auto  key       = std::make_tuple(pos.x, pos.y, pos.z);
     if (auto it = snapshots.find(key); it != snapshots.end()) {
         auto const& snap = it->second;
-        if (snap.size == size && snap.items.size() == items.size()) {
+        if (snap.size == size && snap.items == items) {
             snapshots.erase(it);
         } else {
             filled = static_cast<int>(snap.items.size());
@@ -1072,10 +1080,9 @@ bool advanceCooking(
 }
 
 // Block-actor based extras that are not plain containers.
-// Numbers the engine keeps inside the block entity: furnace/brewing-stand
-// progress, honey in a bee nest, beacon level, campfire cooking. All of them are
-// engine fields, so no block id list is involved; each line obeys the switch of
-// the adapter it belongs to.
+// Numbers the engine keeps inside the block entity: brewing-stand progress, honey in a bee
+// nest, beacon level, campfire cooking. All of them are engine fields, so no block id list is
+// involved; each line obeys the switch of the adapter it belongs to.
 void blockEntityNumberLines(
     void const*               source,
     BlockPos const&           pos,
@@ -1088,41 +1095,14 @@ void blockEntityNumberLines(
         return;
     }
     switch (be->getType()) {
+    // The furnace family has no line of its own here: a client is only sent a partial, bursty
+    // copy of a machine's cooking counter, so its `Time left` / `Cook progress` lines never
+    // matched what the machine was really doing and were taken out again. Its slot line and its
+    // contents still come from machineLine() and chestLine().
     case BlockActorType::Furnace:
     case BlockActorType::BlastFurnace:
-    case BlockActorType::Smoker: {
-        if (!opt.furnace) {
-            break;
-        }
-        auto const* furnace = static_cast<FurnaceBlockActor const*>(be);
-        // Only the item currently in the fire is reported. mBurnInterval is how
-        // long one item takes in this machine (200 ticks in a furnace, 100 in a
-        // blast furnace / smoker) and mCookingProgress how far that item is;
-        // mLitTime / mLitDuration describe the fuel and are not used. The item in
-        // the input slot also tells us how many are still to come, which is what
-        // lets the estimate walk on to the next one after this one is done.
-        int const     perItem = static_cast<int>(furnace->mBurnInterval);
-        int const     raw     = static_cast<int>(furnace->mCookingProgress);
-        int           queued  = 1;
-        std::uint64_t tag     = 0;
-        if (auto const& input = furnace->getItem(FurnaceBlockActor::SlotIngredient); !input.isNull()) {
-            queued = std::max(1, static_cast<int>(input.mCount));
-            tag    = std::hash<std::string>{}(input.getDescriptionId());
-        }
-        int progress = 0;
-        if (perItem > 0 && advanceCooking(source, pos, 0, tag, perItem, raw, queued, progress)) {
-            // Percent must use this machine's own duration: 200 ticks (10s) in a
-            // furnace but 100 (5s) in a blast furnace / smoker, so a fixed
-            // divisor would report half the real progress there.
-            int const percent = std::clamp(progress * 100 / perItem, 0, 100);
-            // rounded up: while anything is still burning the line should not sit
-            // on "0s" for a whole second
-            int const secondsLeft = (std::max(0, perItem - progress) + 19) / 20;
-            lines.push_back(textLine(langCode, "Time left", std::to_string(secondsLeft) + "s"));
-            lines.push_back(textLine(langCode, "Cook progress", std::to_string(percent) + "%"));
-        }
+    case BlockActorType::Smoker:
         break;
-    }
     case BlockActorType::BrewingStand: {
         if (!opt.brewing) {
             break;
@@ -1431,6 +1411,18 @@ void setLiveEntityContainerSnapshot(int64_t actorId, std::vector<ContainerItem> 
         snapshots.clear();
     }
     snapshots[actorId] = ContainerSnapshot{items, size};
+}
+
+void resetRuntimeState() {
+    // Everything here is keyed by a block position, an actor id or a pointer into the level's
+    // memory - none of which is meaningful in another world. A reload reuses both addresses and
+    // coordinates, so a stale entry would be read as the new world's own data: a chest at the
+    // same coordinates showing the previous world's contents, cooking estimates walking on
+    // items that no longer exist.
+    liveSnapshots().clear();
+    liveEntitySnapshots().clear();
+    cookEstimates().clear();
+    clearLoggedOnce();
 }
 
 std::string describeBlockStateNames(IConstBlockSource const& region, BlockPos const& pos) {
