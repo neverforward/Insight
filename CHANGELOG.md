@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
 ## [Unreleased]
+
+## [0.5.0] - 2026-10-25
 ### Added
 - A furnace, blast furnace and smoker report `Time left` and `Cook progress` again, now read from a
   world that really owns the machine: a server always, and a client in a local save (where the
@@ -450,7 +452,8 @@ First release: the mod template has been turned into the actual mod.
 ### Removed
 - The mod template leftovers (`src/mod/MyMod.*`).
 
-[Unreleased]: https://github.com/neverforward/Insight/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/neverforward/Insight/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/neverforward/Insight/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/neverforward/Insight/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/neverforward/Insight/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/neverforward/Insight/compare/v0.2.0...v0.3.0
