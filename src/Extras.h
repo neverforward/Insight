@@ -39,20 +39,33 @@ struct ContainerContents {
     std::vector<ContainerItem> items;
 };
 
+// Whether the world copy this build reads carries the state a client is normally never sent: an
+// entity's complete effect list, a copper golem's waxed flag, a furnace's cooking counter. A
+// server build owns it. A client build only ever has the partial networked copy - unless it is
+// reading the server half of a local save, which is what `completeData` is for.
+#ifdef INSIGHT_TARGET_CLIENT
+inline constexpr bool kOwnWorldIsComplete = false;
+#else
+inline constexpr bool kOwnWorldIsComplete = true;
+#endif
+
 // Builds the extra, per-block-type information lines for the block at `pos`.
 // Returns one or more "\n"-joined lines (without a trailing newline), or an
 // empty string when nothing applies. Labels are translated for `langCode`
 // through the mod's message catalogue (lang/<locale>.json, see I18n.h); block
 // and item *names* come from the game's own translation tables, and the raw
 // translation key is shown when no localized name exists. When `contents` is
-// given, a container's items are reported there as well.
+// given, a container's items are reported there as well. `completeData` says the
+// caller's world holds the state a client is not sent (see kOwnWorldIsComplete);
+// lines that would otherwise be a guess are only built when it is true.
 [[nodiscard]] std::string buildBlockExtras(
     IConstBlockSource const& region,
     BlockPos const&          pos,
     std::string const&       typeName,
     std::string const&       langCode,
     BlockExtrasConfig const& opt,
-    ContainerContents*       contents = nullptr
+    ContainerContents*       contents     = nullptr,
+    bool                     completeData = kOwnWorldIsComplete
 );
 
 // Facing / orientation of the block at `pos` for the {direction} placeholder.
@@ -98,16 +111,6 @@ void resetRuntimeState();
 // Debug helper: "state=value,state=value" for every state of the block at
 // `pos` (used by the debug log to calibrate state names).
 [[nodiscard]] std::string describeBlockStateNames(IConstBlockSource const& region, BlockPos const& pos);
-
-// Whether the world copy this build reads carries the state a client is normally never sent: an
-// entity's complete effect list, a copper golem's waxed flag, a furnace's cooking counter. A
-// server build owns it. A client build only ever has the partial networked copy - unless it is
-// reading the server half of a local save, which is what the last argument is for.
-#ifdef INSIGHT_TARGET_CLIENT
-inline constexpr bool kOwnWorldIsComplete = false;
-#else
-inline constexpr bool kOwnWorldIsComplete = true;
-#endif
 
 // Extra lines for the entity under the crosshair: container minecarts / boats
 // ("物品 n/m"), paintings, the worn equipment, and the entity adapters of

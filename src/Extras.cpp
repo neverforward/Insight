@@ -1076,6 +1076,50 @@ bool advanceCooking(
     return true;
 }
 
+// Work done on the item in a machine's fire: 0 when it has just gone in, `perItem` when it is done.
+// The engine's counter is not the same field in every copy of a world - the level that owns the
+// machine counts the work up, the copy a client is sent counts the time left down - so the direction
+// is read off the last two samples instead of being assumed. A jump of more than half the duration is
+// the wrap onto the next item, not a turn of direction.
+struct CookTrend {
+    int                                   raw      = -1;
+    int                                   perItem  = 0;
+    bool                                  countsUp = true;
+    std::chrono::steady_clock::time_point seen{};
+};
+
+std::map<std::uint64_t, CookTrend>& cookTrends() {
+    static std::map<std::uint64_t, CookTrend> trends;
+    return trends;
+}
+
+int cookingElapsed(void const* source, BlockPos const& pos, int perItem, int raw) {
+    raw                 = std::clamp(raw, 0, perItem);
+    auto&      trends   = cookTrends();
+    auto const now      = std::chrono::steady_clock::now();
+    if (trends.size() > 64) { // nobody keeps every furnace they ever looked at
+        for (auto it = trends.begin(); it != trends.end();) {
+            if (now - it->second.seen > std::chrono::seconds(30)) {
+                it = trends.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    auto& trend = trends[cookEstimateKey(source, pos, 0)];
+    if (trend.raw >= 0 && trend.perItem == perItem) {
+        int const delta    = raw - trend.raw;
+        int const distance = delta < 0 ? -delta : delta;
+        if (distance != 0 && distance < perItem / 2) {
+            trend.countsUp = delta > 0;
+        }
+    }
+    trend.raw     = raw;
+    trend.perItem = perItem;
+    trend.seen    = now;
+    return trend.countsUp ? raw : perItem - raw;
+}
+
 // Block-actor based extras that are not plain containers.
 // Numbers the engine keeps inside the block entity: brewing-stand progress, honey in a bee
 // nest, beacon level, campfire cooking. All of them are engine fields, so no block id list is
@@ -1086,20 +1130,81 @@ void blockEntityNumberLines(
     BlockActor const*         be,
     std::string const&        langCode,
     BlockExtrasConfig const&  opt,
-    std::vector<std::string>& lines
+    std::vector<std::string>& lines,
+    bool                      completeData
 ) {
     if (!be) {
         return;
     }
     switch (be->getType()) {
-    // The furnace family has no line of its own here: a client is only sent a partial, bursty
-    // copy of a machine's cooking counter, so its `Time left` / `Cook progress` lines never
-    // matched what the machine was really doing and were taken out again. Its slot line and its
-    // contents still come from machineLine() and chestLine().
     case BlockActorType::Furnace:
     case BlockActorType::BlastFurnace:
-    case BlockActorType::Smoker:
+    case BlockActorType::Smoker: {
+        if (!opt.furnace) {
+            break;
+        }
+        // A client is only sent a partial, bursty copy of a machine's cooking counter, so these two
+        // lines are built only when the caller's world really owns the machine (see
+        // kOwnWorldIsComplete): a server, or a client reading the server half of a local save.
+        if (!completeData) {
+            break;
+        }
+        auto const* machine = static_cast<FurnaceBlockActor const*>(be);
+        // mBurnInterval is how long one item takes in this machine - 200 ticks (10s) in a furnace,
+        // 100 (5s) in a blast furnace / smoker. mLitTime is the fuel that is burning: at zero the
+        // machine is out, whatever its cooking counter still says.
+        int const perItem = static_cast<int>(machine->mBurnInterval);
+        if (perItem <= 0 || static_cast<int>(machine->mLitTime) <= 0) {
+            break;
+        }
+        // The counter's direction is not the same on every copy of a world: the level that owns the
+        // machine counts the work done, the copy a client is sent counts the time left. Both are
+        // told apart by looking at the last two readings instead of trusting either.
+        int const elapsed = cookingElapsed(source, pos, perItem, static_cast<int>(machine->mCookingProgress));
+        int const remaining = perItem - elapsed;
+        // Nothing is in the fire: the counter sits at zero between two items, and the time left would
+        // otherwise read as a whole item that is not being smelted at all.
+        if (elapsed <= 0) {
+            break;
+        }
+        // How many items still have to go through, the one in the fire included. Here the block
+        // entity's own copy of the slots is complete, so the input stack's count is the queue.
+        int queued = 1;
+        if (auto const& input = machine->getItem(FurnaceBlockActor::SlotIngredient); !input.isNull()) {
+            queued = std::max(1, static_cast<int>(input.mCount));
+        }
+        // How far the item in the fire has got, 0% when it has just gone in and 100% when it is
+        // done. It has to use this machine's own duration, or a blast furnace / smoker would show
+        // half of it.
+        int const percent = std::clamp(elapsed * 100 / perItem, 0, 100);
+        // The line covers the whole queue: one full smelt for every item *behind* the one in the
+        // fire (the input stack still counts the item being smelted), plus what is left of that one.
+        // Rounded up, so it never sits on "0s" while something is still cooking.
+        int const ticksLeft   = std::max(0, queued - 1) * perItem + remaining;
+        int const secondsLeft = (std::max(0, ticksLeft) + 19) / 20;
+        lines.push_back(textLine(langCode, "Time left", std::to_string(secondsLeft) + "s"));
+        lines.push_back(textLine(langCode, "Cook progress", std::to_string(percent) + "%"));
+        {
+            // Says what the machine's counter really is doing, once a second, so the direction and
+            // the arithmetic can be checked against the panel without another build.
+            static std::chrono::steady_clock::time_point lastReport{};
+            auto const                                   now = std::chrono::steady_clock::now();
+            if (now - lastReport > std::chrono::seconds(1)) {
+                lastReport = now;
+                Insight::getInstance().getSelf().getLogger().info(
+                    "[furnace] raw={}/{} elapsed={} remaining={} queued={} -> {}% / {}s",
+                    static_cast<int>(machine->mCookingProgress),
+                    perItem,
+                    elapsed,
+                    remaining,
+                    queued,
+                    percent,
+                    secondsLeft
+                );
+            }
+        }
         break;
+    }
     case BlockActorType::BrewingStand: {
         if (!opt.brewing) {
             break;
@@ -1172,9 +1277,10 @@ void blockActorLines(
     std::string const&        langCode,
     BlockActor const*         be,
     std::vector<std::string>& lines,
-    BlockExtrasConfig const&  opt
+    BlockExtrasConfig const&  opt,
+    bool                      completeData
 ) {
-    blockEntityNumberLines(&region, pos, be, langCode, opt, lines);
+    blockEntityNumberLines(&region, pos, be, langCode, opt, lines, completeData);
     (void)region;
     (void)pos;
     (void)type;
@@ -1419,6 +1525,7 @@ void resetRuntimeState() {
     liveSnapshots().clear();
     liveEntitySnapshots().clear();
     cookEstimates().clear();
+    cookTrends().clear();
     clearLoggedOnce();
 }
 
@@ -1449,7 +1556,8 @@ std::string buildBlockExtras(
     std::string const&       typeName,
     std::string const&       langCode,
     BlockExtrasConfig const& opt,
-    ContainerContents*       contents
+    ContainerContents*       contents,
+    bool                     completeData
 ) {
     if (!opt.enabled) {
         return {};
@@ -1541,7 +1649,7 @@ std::string buildBlockExtras(
     // used to silence the furnace readout and the campfire timers too.
     if (opt.banner || opt.pot || opt.shelf || opt.bookshelf || opt.lectern || opt.itemFrame || opt.sign || opt.furnace
         || opt.brewing || opt.misc) {
-        blockActorLines(region, pos, typeName, langCode, be, lines, opt);
+        blockActorLines(region, pos, typeName, langCode, be, lines, opt, completeData);
     }
 
     {

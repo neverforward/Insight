@@ -985,7 +985,8 @@ void ClientLogic::updateServerLook(Level& level) {
         look.x               = pos.x;
         look.y               = pos.y;
         look.z               = pos.z;
-        look.extras   = buildBlockExtras(region, pos, block.getTypeName(), lang, cfg.extras, &look.contents);
+        look.extras
+            = buildBlockExtras(region, pos, block.getTypeName(), lang, cfg.extras, &look.contents, true);
         look.blockValid = true;
     }
 

@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- A furnace, blast furnace and smoker report `Time left` and `Cook progress` again, now read from a
+  world that really owns the machine: a server always, and a client in a local save (where the
+  panel reads the hosted world). `Cook progress` is how far the item in the fire has got - 0% when it
+  has just gone in, 100% when it is done - and `Time left` is one full smelt for every item behind it
+  plus what is left of it. A client in a remote session keeps the slot line and the contents line
+  only: its networked copy of a machine's counter is partial and arrives in bursts, so the two lines
+  would be a guess there.
 - In a world this game hosts itself - a local save - the panel reads the block out of the server
   half of the engine, which holds the complete world, instead of out of the networked copy the
   client is sent: a container's contents and a machine's counters are then what the server sees
@@ -39,9 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - The pale one-unit outline around the info panel. The box is its rounded background fill and
   nothing else now; `client.background: false` still removes the box entirely.
-- The `Time left` and `Cook progress` lines of a furnace, blast furnace and smoker. A client is only
-  sent a partial, bursty copy of a machine's cooking counter, so the two lines could not be made to
-  agree with what the machine was doing; the slot line and the contents line stay.
 
 ### Fixed
 - A furnace, blast furnace or smoker's contents follow the machine: while its screen is open they
