@@ -7,461 +7,56 @@
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/neverforward/Insight/build.yml?style=for-the-badge)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/y/neverforward/Insight?style=for-the-badge)
 
-一个 Minecraft 基岩版（LeviLamina 26.51.*）的**信息显示**模组：实时显示玩家准星所指方块的信息（名称、类型、坐标、距离、容器内容、方块状态……）。
+**Insight** 是 Minecraft 基岩版（LeviLamina 26.51.\*）的信息显示模组
+
+|潜隐盒| 熔炉 | 马 | 盔甲架 |...|
+| --- | --- | --- | --- | --- |
+|![潜隐盒](assets/shulker_box_zh.png)| ![熔炉](assets/furnace_zh.png) | ![马](assets/horse_zh.png) | ![盔甲架](assets/armor_stand_zh.png) |更多内容待你发掘|
+
+客户端上面板由模组自己绘制，服务端上在action bar中显示
+
+所有选项都能在游戏里改
+
+![配置界面](assets/config_page_zh.png)
+
+
+- **方块与方块实体**：名称、类型 ID、翻译键、坐标、距离、朝向、光照，以及附加信息
+- **实体**：名称、类型、坐标、血量与盔甲（条形 / 心形 / 数值）、主人、状态效果、繁殖与转化倒计时、宠物盔甲、马与羊驼数值、盔甲架姿势。
+- **容器**：箱子、木桶、潜影盒、漏斗、合成器、陶罐、箱子矿车、熔炉 都会把里面的物品显示出来。同类物品可以合并成一个显示
+- **熔炉**：剩余时间 与 烹饪进度
+
+## 环境要求
+
+- 系统版本Windows 10以上
+- 安装 [LeviLauncher](https://github.com/LiteLDev/LeviLauncher)
 
 ## 安装
 
-- 服务端: `lip install github.com/neverforward/Insight`
-- 客户端: `lip install github.com/neverforward/Insight#client`
-
-首次启动会自动生成配置文件 `plugins/Insight/config/config.json`（服务端）或
-`mods/Insight/config/config.json`（客户端），包含全部默认值。执行
-`/insight reload`（需 OP）即可热重载；也可以直接在游戏里用 `/insight set <选项> <值>` 修改。
-
-## 指令
-
-服务端命令是 `/insight`，客户端是 `/cliinsight`。进入世界时客户端会把服务端的命令表
-并进本地命令表、再让客户端模组叠加注册，所以客户端若也叫 `/insight`，在两端都装了 Insight 时会互相顶掉；
-加 `cli` 前缀就能同时可用。
-两边的子命令完全一致。
-
-```
-/insight toggle          开/关显示（服务端：你自己的开关，存在模组数据目录；客户端：总开关，写入配置文件）
-/insight on | off        同上
-/insight status          查看当前状态（开关/间隔/距离/频道，或锚点/显示/语言/extras）
-/insight gui             打开配置：客户端是自己的界面，服务端则给发命令的玩家推一个表单
-/insight reload          重新读取配置文件（需要 OP/管理员）
-/insight set <选项> <值>   游戏内直接改配置并保存（需要 OP/管理员）
-```
-
-`<选项>` 输入时游戏会给出补全候选，就是配置里的那些名字（`display.name`、`entity.health`、
-`maxWidth`、`extras.chest`…）。`display.health` 已不存在
-（血量现在是 `entity.health`），也从来没有 `display.dimension` 这项。取值写错会提示可用取值，例如：
-
-```
-/insight set channel actionbar
-/insight set maxDistance 24
-/insight set display.distance true
-/insight set entity.health false
-/insight set extras.chest false
-```
-
-服务端每位玩家的开关保存在模组数据目录下的键值数据库里（`plugins/Insight/data/players/`），
-服务器重启后依然有效；只有在玩家把开关改成**非默认值**时才写入记录。
-
-## 配置
-
-### 配置界面（仅客户端）
-
-客户端除了聊天栏指令，还可以用界面改配置：
-
-- 用 `/cliinsight gui` 或快捷键打开（默认 <kbd>I</kbd>）；
-- 另一个快捷键（默认 <kbd>K</kbd>）开关信息显示；
-- 快捷键只在不会抢走别人的按键时生效：必须处于游戏中（任何界面都不行——容器、暂停菜单、聊天框
-  都会把按键留给自己），而且当前没有文本框在被输入（聊天框、告示牌、铁砧命名、创造模式搜索框）。
-  配置界面自己打开时按键归它；只有它正在等待改键、或某个输入框有光标时才不抢；
-- 两个按键都会出现在游戏自带的按键设置里、可在那里改键——配置里的 `keyOpenConfig` /
-  `keyToggleShow` 只是默认值（Windows 虚拟键码，`0` 表示不绑定）；
-- 每行显示当前值，点击行展开内联编辑器；左列不再是长长的一列，而是分成五个标签页——
-  **通用**、**方块显示行**、**实体信息**、**扩展信息**、**快捷键**。**方块显示行**里按开关所属的行
-  分组：**标题行**（名称、朝向）、**详情行**（类型 ID、翻译键）、**坐标行**（坐标、距离）、
-  **状态行**（光照、自发光）、**扩展信息**（扩展信息行 → `display.extras`）。**实体信息**里有
-  **实体信息**（`entityEnabled`），以及同样分组的实体开关：**标题行**（名称、朝向）、
-  **详情行**（类型 ID、翻译键）、**坐标行**（坐标、距离）、**状态行**（生命值），最后是
-  **扩展信息**（扩展信息行 → `entity.extras`）。**扩展信息**标签页里有 **扩展信息**（`extras.enabled`）、
-  **扩展：所有方块**、**扩展：容器**、**扩展：方块实体**、**扩展：红石**、**扩展：方块状态**，
-  **快捷键**里是两个按键绑定。右列仍是面板的实时预览与外观设置；改动立即保存，底部会提示结果；
-- 界面打开期间游戏不会收到键鼠输入。
-
-### 读取本地存档（仅客户端）
-
-自己开的存档里，游戏会在同一进程中运行它的服务端那半，那半拥有完整的世界数据：方块实体带着
-全部槽位、客户端从没被告知的容器、机器计时器等等。因此在这种世界里，面板会直接读**服务端自己的
-世界**——把「正在看向哪里」交给服务端的 tick 去做，保证在拥有这份世界数据的线程上读——显示服务端
-视角的完整内容，而不是客户端那份残缺的网络副本。联机时没有这个服务端关卡，面板仍读客户端世界
-（也可以用 `overlayOnRemote` 让服务端推文字）。
-
-### 配置菜单（服务端）
-
-服务端没有自己的屏幕，所以 `/insight gui` 是给**发起命令的玩家**推一个**表单**：先是分组列表，每个分组一个
-表单，点提交一次性应用。值的写入走的就是 `/insight set` 那条路径，因此范围校验、合法性检查与立即保存的行为与
-命令完全一致——超范围的值会在聊天里说明原因，表单随后重新打开，可以接着改别的分组。分组为 **通用**（总开关、
-距离、间隔、通道……）、**方块显示行**、**实体信息行**、**颜色**、**扩展：所有方块**、**扩展：方块实体**、
-**扩展：红石**、**扩展：实体**。
-
-**仅客户端的选项在菜单里刻意不出现**——`showOverlay`、锚点、偏移、字体与外观、语言、按键绑定，以及容器物品
-图标（`extras.chestIcons`、`extras.chestIconsMerge`、`extras.chestIconsPerRow`、`extras.chestIconLimit`，
-这几个由客户端自己的界面绘制）在服务端都没有
-作用。`.cache/check_gui_options.py` 负责守住这条声明：菜单必须覆盖服务端能用的每一个 `/insight set` 选项、
-不多不少，并且它显示的每个分组标题与行标签都已翻译。
-
-
-```jsonc
-{
-    "version": 10,                  // 结构版本；升级模组时旧配置会自动合并，version <= 4 的
-                                   // format / entityFormat 模板会分别转成 display / entity
-                                   // 两组开关（见下文）
-
-    "enabled": true,               // 总开关
-    "enabledByDefault": true,      // 玩家默认开启；玩家可用 /insight 单独切换
-
-    "maxDistance": 16.0,           // 射线最大距离（格）
-    "intervalTicks": 4,            // 采样间隔（20 tick = 1 秒；4 = 0.2s）
-    "passThroughLiquids": true,    // 视线是否穿透水/岩浆
-    "showEmpty": false,            // 看向空气/超距时是否仍显示
-    "emptyText": "",               // showEmpty=true 时显示的文本
-
-    "display": {                   // 方块面板显示哪些内容，每部分一个开关（取代旧的文本模板）
-        "name": true,                  // 标题行：本地化的方块名
-        "facing": true,                // 标题行：名称后用括号附上的方块朝向 / 轴，如 石头§7(北)；方块没有我们认得的状态时跳过
-        "identifier": true,            // 详情行：方块类型 id，如 minecraft:stone
-        "translationKey": false,       // 详情行：紧跟类型 id 的括号内方块翻译键，如 minecraft:stone(tile.stone.stone)
-        "position": true,              // 坐标行：x, y, z
-        "distance": false,             // 坐标行：与方块的距离（格）
-        "light": true,                 // 状态行：该位置的光照，如 光照 12
-        "emission": true,              // 状态行：方块自身发出的光，如 自发光 15
-        "extras": true                 // 方块专属扩展信息行（还受 extras.enabled 约束）
-    },
-
-    "entity": {                    // 实体面板显示哪些内容（是否显示实体由 entityEnabled 决定）
-        "name": true,                  // 标题行：玩家真实名字 / 命名牌 / 本地化的实体名
-        "facing": true,                // 标题行：实体自身的偏航角换算成的方位，放在名称后的括号里
-        "identifier": true,            // 详情行：实体类型 id，如 minecraft:zombie
-        "translationKey": false,       // 详情行：名称所解析自的键，如 minecraft:zombie(entity.zombie)
-        "position": true,              // 坐标行：实体的 x, y, z
-        "distance": false,             // 坐标行：与实体的距离（格）
-        "health": true,                // 状态行：当前/最大血量；没有血量的实体（物品、投掷物、画）不显示
-        "healthStyle": "hearts",       // 血量（以及盔甲行）怎么画，仅客户端：bar 条形 | bar+number 条形+数值 | hearts 心形 | hearts+number 心形+数值 | number 数值
-        "heartsThreshold": 40.0,       // 血量（点）；最大血量超过它的实体仍然显示数字
-        "heartsPerRow": 10,            // 每行红心数；再多的行从上一行上方开始，并压住上一行的 1/2
-        "healthDecimals": false,       // 数字形式的血量保留一位小数，如 19.5/20
-        "armor": true,                 // 盔甲值用原版盔甲贴图画（仅客户端），阈值与行规则同红心
-        "extras": true                 // 实体专属扩展信息行（与方块侧共用同一套 extras.* 适配器，同样受 extras.enabled 约束）
-    },
-
-    "colors": {                    // 面板每个部分的颜色：每处一个格式码，不含 "§"（"c" 即 §c）；
-                                   // 空串（或 none / off / default）表示该处用纯文本色。方块面板、
-                                   // 实体面板与扩展信息行共用这一套，配色一处改全局生效。
-        "name": "f",               // 目标名称
-        "facing": "7",             // 名称后括号里的朝向
-        "identifier": "7",         // 类型 ID 行
-        "translationKey": "7",     // 类型 ID 后括号里的翻译键
-        "x": "c",                  // 坐标：x（红）
-        "y": "a",                  // 坐标：y（绿）
-        "z": "b",                  // 坐标：z（青）
-        "distance": "7",           // 坐标后括号里的距离
-        "label": "7",              // "标签 取值" 行：标签
-        "value": "f",              // "标签 取值" 行：取值
-        "health": "c"              // 实体血量
-    },
-
-    "extras": {                    // 扩展信息适配器，方块与实体面板共用（display.extras / entity.extras 打开时才显示）
-        "enabled": true,           // 两侧所有适配器的总开关
-        "hardness": true,          // 所有方块的破坏时间
-        "blastResistance": true,   // 爆炸抗性
-        "chest": true,             // 容器占用：客户端直接画物品图标，服务端仍是 物品 12/27
-        "chestIcons": true,        // 用物品图标代替「物品 12/27」（仅客户端）
-        "chestIconsMerge": true,   // 合并同类项：同一种物品只画一个图标，堆叠数量相加
-        "chestIconsPerRow": 9,     // 每行放几个图标
-        "chestIconLimit": 18,      // 最多画几个图标（0 = 全画，放不下的用一个小 "+n" 记数）
-        "bookshelf": true,         // 錾制书架里的书
-        "shelf": true,             // 展示架内的物品
-        "lectern": true,           // 讲台的书与页码
-        "pot": true,               // 陶罐的物品与陶片
-        "brewing": true,           // 酿造台槽位
-        "furnace": true,           // 熔炉 / 高炉 / 烟熏炉槽位
-        "jukebox": true,           // 唱片机正在播放的唱片
-        "sign": true,              // 告示牌文本
-        "banner": true,            // 旗帜图案
-        "itemFrame": true,         // 物品展示框内的物品
-        "flowerPot": true,         // 花盆里的植物
-        "painting": true,          // 挂的是哪一幅画
-        "piston": true,            // 活塞状态
-        "redstone": true,          // 红石线 / 压力板 / 拉杆等的强度
-        "repeater": true,          // 中继器挡位与信号
-        "comparator": true,        // 比较器信号
-        "dispenser": true,         // 发射器 / 投掷器状态
-        "candle": true,            // 蜡烛根数与是否点燃
-        "respawnAnchor": true,     // 重生锚充能等级
-        "misc": true               // 其余方块状态
-    },
-
-    "entityExtras": {              // 只对实体有意义的额外信息行（同样受 extras.enabled 总开关控制）
-        "owner": true,             // 已驯服动物：主人是谁
-        "effects": true,           // 当前状态效果，占一行
-        "effectsLimit": 4,         // 这一行最多放几个（0 = 全部）
-        "breeding": true,          // 恋爱 / 繁殖冷却计时
-        "conversion": true,        // 僵尸村民：还需多久转化
-        "petArmor": "all",         // 宠物护甲（身体槽）：all | damaged | off
-        "horse": true,             // 马：移动速度、跳跃力、是否装鞍
-        "armorStand": true,        // 盔甲架：姿势序号
-        "villager": true,          // 村民：职业与交易等级
-        "waxed": true              // 铜傀儡：是否已涂蜡（仅服务端；该属性不同步给客户端）
-    },
-
-    "entityEnabled": true,         // 准星指向实体时也显示
-
-    "server": {
-        "channel": "actionbar"     // none | actionbar | tip | jukebox | system | chat
-    },
-
-    "client": {
-        "showOverlay": true,
-        "anchor": "top_center",    // top_left/top_center/top_right/middle_left/center/middle_right/bottom_left/bottom_center/bottom_right
-        "offsetX": 0.0,            // 屏幕宽度比例的水平偏移（正=从锚点向屏幕内侧）
-        "offsetY": 0.0,            // 屏幕高度比例的纵向偏移（正=从锚点向屏幕内侧）
-        "fontSize": 1.0,           // 字号倍率
-        "background": true,        // 文字后的半透明黑底
-        "backgroundAlpha": 0.45,   // 面板透明度 0~1
-        "shadow": true,            // 文字阴影
-        "textColor": "ffffff",     // 无颜色代码时的文字颜色（RRGGBB）
-        "maxWidth": 0.0,           // 最大面板宽度占屏比，0 = 不限（超长自动换行）
-        "transitionTime": 0.1,     // 面板开关的淡入淡出、以及换目标时面板尺寸过渡的秒数，0 = 立即
-        "hideOverlayInGui": true,  // 打开背包/箱子等界面时隐藏面板
-        "overlayOnRemote": "on",   // on=联机也画本地面板；off=联机时隐藏
-        "language": "zh_cn",       // zh_cn、en，或 auto（客户端报告了已支持的语言时才跟随）
-        "keyOpenConfig": 73,       // 打开配置界面的快捷键（虚拟键码，0 = 不绑定）
-        "keyToggleShow": 75        // 开关信息显示的快捷键（虚拟键码，0 = 不绑定）
-    }
-}
-```
-
-> 如果需要详细日志（方块的每个状态、容器槽位判定、活塞/陶罐诊断等）要将 `PreLoaderConfig.json` 中的 `logLevel` 改为 `5`
-
-### display 开关（方块）
-
-面板不再由文本模板拼出：每一部分都有自己的开关，由模组自己组装，因此不可能拼出错误布局
-（不会有残留占位符、悬空分隔符或空行）。客户端上这块面板由游戏自带的 UI 渲染器绘制
-（引擎字体、用引擎物品渲染器画主体图标、圆角底板），并按 `client.transitionTime` 淡入淡出、
-换目标时做尺寸过渡。方块与实体不再共用一套开关：下面的 `display.*` 描述**方块**面板，
-`entity.*` 描述**实体**面板。开关都是布尔值：写 `true` / `false`（`on` / `off`、`1` / `0`
-同样可用），与其它开关的解析方式一致。
-
-| 开关 | 默认值 | 显示内容 |
-| --- | --- | --- |
-| `display.name` | `true` | 本地化的方块名，即标题行 |
-| `display.facing` | `true` | 名称后紧跟次要色括号里的方块朝向 / 轴，如 `石头§7(北)`；方块没有我们认得的状态时跳过 |
-| `display.identifier` | `true` | 方块类型 id，如 `minecraft:stone`，即详情行 |
-| `display.translationKey` | `false` | 紧跟类型 id、同样用次要色的括号内方块翻译键，如 `§7minecraft:stone(tile.stone.stone)` |
-| `display.position` | `true` | `x, y, z`，即坐标行 |
-| `display.distance` | `false` | 与方块的距离（格），跟在坐标后面 |
-| `display.light` | `true` | 该位置的光照，显示为 `光照 12` |
-| `display.emission` | `true` | 方块自身发出的光，显示为 `自发光 15` |
-| `display.extras` | `true` | 方块专属扩展信息行（即 `extras.*` 各适配器，还受 `extras.enabled` 约束） |
-
-### entity 开关（实体）
-
-`entityEnabled` 决定是否瞄准并显示实体；下面的开关只决定指向实体后这块面板里有什么。
-
-| 开关 | 默认值 | 显示内容 |
-| --- | --- | --- |
-| `entity.name` | `true` | 玩家真实名字 / 命名牌 / 本地化的实体名，即标题行 |
-| `entity.facing` | `true` | 实体**自身偏航角**换算出的方位，放在名称后次要色的括号里 |
-| `entity.identifier` | `true` | 实体类型 id，如 `minecraft:zombie`，即详情行 |
-| `entity.translationKey` | `false` | 名称所解析自的键，紧跟类型 id、同样用次要色的括号，如 `§7minecraft:zombie(entity.zombie)` |
-| `entity.position` | `true` | 实体的 `x, y, z`，即坐标行 |
-| `entity.distance` | `false` | 与实体的距离（格），跟在坐标后面 |
-| `entity.health` | `true` | `当前/最大` 血量，如 `§7生命值 §f12/20`；没有血量的实体（物品、投掷物、画）不显示 |
-| `entity.healthStyle` | `hearts` | 血量与盔甲行怎么画（仅客户端，见下文）：`bar` 条形 / `bar+number` 条形+数值 / `hearts` 心形 / `hearts+number` 心形+数值 / `number` 数值 |
-| `entity.heartsThreshold` | `40` | 血量（点）；`hearts` 模式下**最大**血量不超过它的实体画心，超过的仍显示数字 |
-| `entity.heartsPerRow` | `10` | 一行放几颗心，再多的行从上一行上方开始；`bar` 模式下是条形的宽度（以红心计） |
-| `entity.healthDecimals` | `false` | `number` 模式保留一位小数，如 `19.5/20` |
-| `entity.armor` | `true` | 是否显示盔甲行，样式与血量相同；`number` 模式下形如 `§7盔甲 §f15` |
-| `entity.extras` | `true` | 实体专属扩展信息行（箱子/漏斗矿车、运输船等容器实体、画、穿戴的装备）；一部分与方块侧共用 `extras.*` 适配器，实体自己的在 `entityExtras`，两者都受 `extras.enabled` 约束 |
-
-### 颜色
-
-面板每个部分都有自己的颜色，取自上面的 `colors` 分组。取值是**去掉 `§` 的格式码**——就是玩家在
-`§` 后面打的那个字符，所以 `"c"` 表示 `§c`；空串（或 `none` / `off` / `default`）表示该处用纯文本
-色，也就是 `client.textColor`。
-
-除了常见的十六色，基岩版还多出一批材料色：
-
-| 码 | 颜色 | 码 | 颜色 | 码 | 颜色 | 码 | 颜色 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `0` | 黑色 | `4` | 深红色 | `8` | 深灰色 | `c` | 红色 |
-| `1` | 深蓝色 | `5` | 深紫色 | `9` | 蓝色 | `d` | 淡紫色 |
-| `2` | 深绿色 | `6` | 金色 | `a` | 绿色 | `e` | 黄色 |
-| `3` | 暗水蓝色 | `7` | 灰色 | `b` | 水蓝色 | `f` | 白色 |
-
-| 码 | 基岩版颜色 | 码 | 基岩版颜色 | 码 | 基岩版颜色 |
-| --- | --- | --- | --- | --- | --- |
-| `g` | Minecoin 金色 | `n` | 铜锭色 | `t` | 青金石色 |
-| `h` | 石英色 | `p` | 金锭色 | `u` | 紫水晶色 |
-| `i` | 铁锭色 | `q` | 绿宝石色 | `v` | 树脂色 |
-| `j` | 下界合金色 | `s` | 钻石色 | `w` | 组队蓝色 |
-| `m` | 红石色 | | | | |
-
-`colors.label` 与 `colors.value` 是所有「标签 取值」行用的两处，因此扩展信息行也归它们管：箱子的
-`物品 12/27` 就是一处标签加一处取值，没有单独的设置项。本文档里出现的 `§7`、`§f` 等写法都是默认值。
-
-### 血量与盔甲行：条形 / 心形 / 数值
-
-实体面板用 `entity.healthStyle` 三选一决定血量与盔甲行怎么画（同一个样式同时作用于两行）：
-
-- **`bar` 条形** —— 每行一条，由游戏自己的 UI 渲染器绘制：深色圆角底槽 + 按比例覆盖的填充，
-  填充色取自配色方案（血量用 `colors.health`、盔甲用 `colors.value`）。条形没有上限，所以
-  `heartsThreshold` 对它不适用；`heartsPerRow` 决定条形宽度（以红心计）。
-- **`hearts` 心形（仅客户端）** —— 用游戏自带的红心贴图（盔甲行用盔甲贴图）。一颗心 = **2 点**，最多表现到半颗。
-  `entity.heartsThreshold` 比较的是**最大**血量而不是当前血量，所以打斗中不会在心和数字之间来回切换：
-  默认 40 下玩家与僵尸（20）画心，铁傀儡（100）与末影龙仍是数字。`entity.heartsPerRow` 是一行放几颗，
-  多出来的行从**上一行上方**开始并压住上一行的 1/2（上面一行盖住下面一行）。
-- **`number` 数值** —— 纯 `当前/最大` 文本，也是装了服务端那一侧永远显示的形式。
-- **`bar+number` 条形+数值** / **`hearts+number` 心形+数值（仅客户端）** —— 同上，但把这一行原本的数字
-  （`生命值 12/20`）写在图形后面，一行里既有图形又有精确数值。这种行仍然只有一行字那么高，图形在该行内垂直居中。
-
-每个图形行都恰好只有**一行字那么高**，所以无论哪种样式，面板的行距都保持一致。整套绘制**仅客户端有效**：
-服务端通道只能把文本交给原版 UI，没有办法把贴图塞进去。
-
-装**服务端**的那一侧则以文本形式表达同一套样式（通道只能传文本），但只表达**条形**：每个整格 `█`、半格 `▌`、
-其余用同样的 `█` 但取次要色（标签色）当灰色底槽——与客户端那条定宽底槽是同一种形状。图标样式（心形）在服务端
-**故意不展开成字形**（字体字形在原版通道里观感很差）：服务端的血量行直接显示数字，`+number` 样式则是在客户端
-把数字写在图标/条形后面。
-
-两个细节：完全没有盔甲的实体保留数字行，不会显示成一行空图标；贴图加载不到时那一行回退成数字文本，
-所以永远不会有空白行。
-
-这些开关按顺序拼出的行。方块面板：
-
-```
-<名称>§7(<朝向>)                                           ← 标题行（display.name、display.facing）
-§7<类型 ID>(<翻译键>)                                      ← 详情行（display.identifier、display.translationKey）
-<x, y, z> §7<距离>                                         ← 坐标行（display.position、display.distance）
-§7<标签> §f<取值> ……                                       ← 状态行：光照、自发光
-<扩展信息行>                                               ← 每个适配器一行
-```
-
-实体面板：
-
-```
-<名称>§7(<朝向>)                                           ← 标题行（entity.name、entity.facing）
-§7<类型 ID>(<翻译键>)                                      ← 详情行（entity.identifier、entity.translationKey）
-<x, y, z> §7<距离>                                         ← 坐标行（entity.position、entity.distance）
-§7<标签> §f<当前>/<最大>                                     ← 状态行：生命值（entity.health）
-<扩展信息行>                                               ← 每个适配器一行
-```
-
-- 朝向挂在第 1 行的**名称**后面，用次要色（`§7`）的括号括起——方块是它自己的朝向状态，实体是
-  它自身的偏航角；开关关掉或目标没有朝向时整段都不出现；
-- 翻译键在第 2 行紧跟在**类型 id** 后面，同样是次要色的括号；
-- 第 3 行是默认文字颜色的坐标，后面跟 `§7` 的距离，中间只隔一个空格；
-- 第 4 行是带标签的状态，每项形如 `§7<标签> §f<取值>`、项与项之间只隔一个空格：方块面板显示
-  光照与方块自身发出的光（`光照 12 自发光 15`），实体面板显示生命值（`生命值 12/20`）——
-  实体没有光照类数据；
-- 旧时用来分隔每个格式部分的 `·` 没有了——面板各部分只用单个空格连接。唯一剩下的 `·` 在容器
-  的扩展信息行里，位于槽位数量与物品总数之间（`物品 12/27 §7· §f35`）；
-- 维度不再显示。
-
-关掉的开关、以及目标本身没有的部分（拿不到朝向状态的方块的朝向、本身没有血量的实体类型）
-都会跳过，空行会被丢掉，所以布局永远不会错位。`showEmpty` 打开且没有指向任何目标时仍然使用
-`emptyText`；它不再有占位符。
-
-颜色：面板自己的行已经带好 `§` 颜色码（次要部分 `§7`——朝向、类型 id、翻译键、距离与状态标签
-——和取值 `§f`；扩展信息行同样用这两种，另外用深灰 `§8` 画截断的物品列表 `...`、空唱片 `-`
-这类占位符号），不需要自己上色。唯一由你写的文本是 `emptyText`，它按你写的原样绘制——`&` 不是
-颜色码，想上色就直接写 `§` 码。
-
-#### 升级旧配置
-
-结构版本低于 5 的 `config.json` 是用旧的 `format` / `entityFormat` 文本模板描述面板的。在配置库
-把新的默认值合并进来、重写文件之前，模组会先读一次这两个模板并逐组转成开关：旧方块模板
-`format` 决定 `display.*` 各开关，旧实体模板 `entityFormat` 决定 `entity.*` 各开关，模板里用到的
-占位符对应的开关保持打开，没用到的开关关掉。所以旧版默认 `format`（用了 `{blockName}`、
-`{blockType}`、`{x} {y} {z}` 和 `{extras}`）会得到 `display.name`、`display.identifier`、
-`display.position` 和 `display.extras` 打开、方块组其余关闭；实体模板里的占位符按同样的规则
-对应到各自的 `entity.*` 开关，例如 `{entityName}` → `entity.name`、`{entityType}` → `entity.identifier`、
-`{x} {y} {z}` → `entity.position`、`{health}` / `{maxHealth}` → `entity.health`、`{extras}` →
-`entity.extras`，升级的玩家看到的还是原来那块面板。文件里根本没有的模板会让它那一组保持
-默认值，而不是把所有开关都关掉。迁移只在版本低于 5 的文件上执行，结果立即保存。逐方块的
-`overrides` 没有对应关系，仍然会被丢弃；`{dim}` 也没有开关可对应——维度不再显示——同样被忽略。
-
-#### 额外信息（extras）
-
-扩展信息行在面板自己的开关打开时才会拼进去——方块是 `display.extras`，实体是 `entity.extras`——
-而 `extras.enabled` 总管**两侧**的适配器，关掉它就同时静音方块与实体的扩展信息。有一部分实体适配器
-和方块侧共用（箱子/漏斗矿车这类容器实体是 `extras.chest`，画是 `extras.painting`，玩家、盔甲架和
-穿装备生物身上的装备是 `extras.misc`），实体自己那一组在 `entityExtras`（见下）。下面每个适配器都有
-自己的开关：
-
-| 开关 | 显示内容 |
-| --- | --- |
-| `extras.chest` | 容器内容——箱子/陷阱箱/桶/漏斗/投掷器/发射器/铜箱子/潜影盒/合成器/雕纹书架/讲台/陶罐，以及箱子矿车/漏斗矿车/运输船。**客户端**会用游戏自己的物品图标把东西画出来（`extras.chestIcons`）：每个非空格子一个图标、大小就是游戏自己 GUI 里那个物品尺寸（看起来和背包里的一致），堆叠数量按原版习惯用小字写在图标角上，`extras.chestIconsMerge` 会把同类项合成一个图标、数量相加（6 把剑显示成一把剑带 `6`，5 组 64 个草方块显示成 `320`），而不是一个槽位一个图标；这一行**永远排在面板最后**（不管方块还报告了什么），所以图标一定贴在框的底部；每行 `extras.chestIconsPerRow` 个、最多画 `extras.chestIconLimit` 个（0 = 全画，放不下的用一个小 `+n` 记数）；空容器没东西可画，客户端干脆不显示这一行（服务端仍显示原来那行，它只能传文字）。**服务端**通道只能传文字，所以那边仍是 `物品 12/27`（物品总数另以 `·` 跟在后面，如 `物品 12/27 §7· §f35`） |
-| `extras.furnace` | 熔炉/高炉/烟熏炉：`槽位 1/3`，烧制时另有 `剩余时间 12s` 与 `烹饪进度 40%`，以及下面那条容器行。`烹饪进度` 是当前这件烧到了多少——刚放进去 0%、烧完 100%；`剩余时间` 是后面每一件各一个完整的烧制时间，再加上当前这件的剩余。这两行只在真正拥有该机器的世界里读取：服务端总是有，本地存档里的客户端也有（见《读取本地存档》）；联机时的客户端只有槽位行与容器行，因为网络副本里的计时器是残缺、成批下发的。里面的东西在**界面打开时**跟着变（读界面自己的容器模型，引擎会往里填实时内容；方块实体里只有一份不完整的副本）；从没开过界面的熔炉只能显示方块实体里那份 |
-| `extras.brewing` | 酿造台：`槽位 x/5` |
-| `extras.redstone` | 比较器、红石线/中继器、压力板、标靶：`信号强度 12` |
-| `extras.misc` | 方块状态与方块实体类信息，见下表 |
-
-下面每一行都归与它同名的那个开关管（`extras.hardness`、`extras.banner`、`extras.sign`、
-`extras.furnace`、`extras.brewing`……）。`extras.misc` 是普通方块状态的总开关，同时管那些没有自己开关的
-方块实体行（蜂巢、信标、营火、床、附魔台）。它们各自显示的内容：
-
-- 门 / 活板门 / 栅栏门：`状态 开/关`（充能时追加一行 `充能 是`）
-- 按钮：`状态 按下/弹起`；拉杆：`状态 开/关`；绊线钩：`连接`、`充能`
-- 侦测器：`充能 是/否`
-- 活塞 / 粘性活塞：`状态 已伸出/未伸出`（动画中为 `伸出中` / `收回中`）；活塞臂：`活塞 普通/粘性` + `状态 已伸出`
-- 合成器：`状态 合成中/空闲` 与 `已触发 是/否`（合成器自己的两个状态，基岩版里第二个叫 `triggered_bit`），都归 `extras.misc` 管，另有从方块实体读出的 `禁用槽位 n`
-- 海泡菜：`数量 n`
-- 蛋糕：`剩余 n/7`；堆肥桶：`堆肥 n/8`
-- 熔炉 / 高炉 / 烟熏炉：`剩余时间 Ns`（当前正在烧的这个物品剩余的）与 `烹饪进度 N%`，只报当前这一个，并且会自己接着往下走、物品烧完自动切到下一个。引擎只在打开容器界面时才把方块实体明细发给客户端，所以客户端是拿最后收到的值按时间往下推：燃料烧完、漏斗在没人看着时补料这类变化会让它偏，重新打开熔炉即可校正
-- 酿造台：`酿造进度 N%`（同样在两次打开界面之间自己往下走）与 `燃料 n/m`
-- 蜂巢 / 蜂箱：`蜜蜂 n/3`（另有来自方块状态的 `蜂蜜等级 n/5`）
-- 信标：`信标等级 n`
-- 营火：每个正在烤的物品一行 `烤制中 <物品> Ns/30s`（剩余时间，同样自己往下走）
-- 床：`被占用 是/否`
-- 附魔台：`附魔等级 n`（书架功率，上限 15）
-- 旗帜：`图案 n`；陶罐：`物品 <物品> ×n` 与 `陶片 n/4`；展示架：`物品 n/3`；物品展示框：`展示 <物品>` 与 `旋转角度 N°`
-- 讲台：`书 <物品>`、`页码 p/total`；告示牌：`文本 <正面>` 与 `文本（背面） <背面>`
-- 任何带装备的实体（盔甲架、玩家、穿装备的生物）：`头盔` / `胸甲` / `护腿` / `靴子`、`主手`、`副手`
-
-实体还有自己的一组开关，放在 `entityExtras` 里（同样受 `extras.enabled` 总开关控制）。每一条都
-只在该实体确实有内容时才出现：
-
-| 开关 | 内容 |
-| --- | --- |
-| `entityExtras.owner` | 已驯服动物的主人：`主人 Steve`（玩家主人用真名，其它用名牌；主人不在场则不显示） |
-| `entityExtras.effects` | 当前状态效果挤在一行，每条是「名字 等级 剩余时间」：`状态效果 速度 II 0:12 · 力量 0:30`。名字用游戏自己的效果名，等级只在二级及以上才写罗马数字——和原版效果列表的写法一致。`entityExtras.effectsLimit` 是这一行最多放几个（多出来的记成 `· +n`，`0` 表示全放）。这一行**只在服务端显示**：客户端最多只会收到其它生物最近的一个效果，显示出来就是一个效果、随后整行消失 |
-| `entityExtras.breeding` | 繁殖计时：喂食后的恋爱计时或繁殖后的冷却显示 `繁殖 0:30`。这些计数是服务端状态，客户端只会被告知"是否在恋爱"，所以客户端显示 `繁殖 恋爱中` |
-| `entityExtras.conversion` | 僵尸村民转化时间：`转化中 2:31`，取自游戏自己在转化期间跑的转化倒计时（`TransformationComponent`）。这个倒计时不会同步给客户端，所以服务端给时间、客户端只能给状态 |
-| `entityExtras.petArmor` | 身体槽的护甲（狼铠、鹦鹉螺铠、地毯等），它不属于四条人形护甲槽：`宠物护甲 狼铠 12/25`。`all` 有就显示、`damaged` 只显示已经磨损的、`off` 不显示 |
-| `entityExtras.horse` | 马、驴、骡、骷髅马/僵尸马。马还会多一行外观，顺序就是游戏自己的贴图顺序：`毛色 白色 · 花纹 白色圆点`（没有花纹时只显示毛色）。所有坐骑再给一行玩家能判断的量——`速度 7.34 方块/秒 · 跳跃高度 3.25 方块`（移动速度属性 ×42.16，跳跃力代入游戏跳跃用的三次式换算成高度），装了鞍再加 `· 已装鞍` |
-| `entityExtras.armorStand` | 盔甲架不是默认姿势时显示姿势序号：`姿势 5`。API 只给序号不给姿势名，所以显示数字 |
-| `entityExtras.villager` | 村民的交易信息：`职业 图书管理员 · 等级 2`。职业名直接用游戏自己的 `entity.villager.*` 文本，跟随玩家语言；等级就是交易界面上的等级（原始 tier 从 0 起算） |
-| `entityExtras.waxed` | 铜傀儡是否已涂蜡：`已涂蜡 是` / `已涂蜡 否`。游戏把该属性当作仅服务端数据（故意不同步给客户端），所以这一行只在服务端出现；客户端不显示，而不是把一只已涂蜡的铜傀儡说成"否" |
-
-有两项做不出来：**幼年生物的生长时间**（组件里只有一个原始年龄计数，没有总量、没有单位也没有正负
-符号的说明，而且不同步给客户端），以及**旧版村民的职业**（只有 V2 村民的 variant 就是职业，旧类型
-没有该字段，与其套错表不如不做）。**下一个实体掉落物**是故意不做的：查战利品表会消耗世界的随机数
-发生器，显示类模组不该做这件事。
-
-**数据完整度**：容器与方块实体类信息在**服务端和本地单机**最完整；客户端连远程服务器时读不到
-别人容器的内容，这类行会留空而不会报错。烧制类计时（熔炉、酿造台、营火）由客户端按最后一次
-收到的值本地推算，所以界面关着时也会继续走，收到真实值就自动校正。暂未覆盖：命令方块、刷怪笼、作物生长阶段，以及
-音符盒（26.40 的 API 拿不到音高与音色，宁可删掉也不显示猜出来的值）。
-
-## 语言
-
-- 方块名、容器内物品名跟随**玩家自己的语言**：直接查引擎的本地化表（它已合并原版与玩家启用的
-  所有资源包），查不到时回退英文，最后回退类型 id。
-- 面板标签与指令反馈提供 `lang/en.json` 与 `lang/zh_cn.json`（**文件名即 locale 码，小写**）。
-  在 `lang/` 下再加一个 `<locale>.json` 即可新增语言；缺条目时回退英文，不会显示空白。
-
-## 构建
-
-1. 安装 [xmake](https://xmake.io/zh/)、clang-cl 与 VS2022+
-
-2. 构建模组
 ```bash
-# 服务端（BDS）
-xmake f -y -p windows -a x64 -m release --target_type=server
-xmake
-
-# 客户端（GDK / LeviLamina 客户端）
-xmake f -y -p windows -a x64 -m release --target_type=client
-xmake
+lip install github.com/neverforward/Insight          # 服务端（BDS）
+lip install github.com/neverforward/Insight#client   # 客户端（GDK / LeviLamina 客户端）
 ```
 
-产物输出到 `bin/Insight/`，整个目录即为上面「安装」里要放置的内容。
+第一次启动会生成配置文件，服务端在 `plugins/Insight/config/config.json`，客户端在 `mods/Insight/config/config.json`，里面是全部默认值。
 
-# 许可证
+## 使用
+
+- `/insight gui` 打开配置（客户端用 `/cliinsight gui` 或快捷键，默认 <kbd>I</kbd>）
+- `/insight set <选项> <值>` 更改配置
+- `/insight reload` 重新读取配置（需要 OP）
+- `/insight toggle`显示或隐藏面板（客户端用`/cliinsight toggle`可以使用快捷键，默认<kbd>k</kbd>）
+
+## 文档
+
+| 文件 | 内容 |
+| --- | --- |
+| [docs/commands.zh.md](docs/commands.zh.md) | 指令相关 |
+| [docs/configuration.zh.md](docs/configuration.zh.md) | 配置说明 |
+| [docs/building.zh.md](docs/building.zh.md) | 构建方法与项目结构 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 如何贡献 |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 参与本项目的行为准则 |
+| [CHANGELOG.md](CHANGELOG.md) | 更新日志 |
+
+## 许可证
 
 MIT © neverforward
