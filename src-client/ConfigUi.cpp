@@ -969,6 +969,7 @@ void ConfigUi::draw() {
                     {"Empty text",        "emptyText",          Kind::Text,  0.0f, 0.0f,  false, {}             },
                     {"Language",          "language",           Kind::Enum,  0.0f, 0.0f,  false, languageChoices},
                     {"Overlay on remote", "overlayOnRemote",    Kind::Enum,  0.0f, 0.0f,  false, {"off", "on"}  },
+                    {"Extras (all)",      "extras.enabled",     Kind::Bool,  0.0f, 0.0f,  false, {}             },
             },
                 0
             );
@@ -1014,6 +1015,65 @@ void ConfigUi::draw() {
                     {"Extras lines", "display.extras", Kind::Bool, 0.0f, 0.0f, false, {}},
             },
                 100
+            );
+            // The block half of the extras moved in here: a block's own lines belong next to the
+            // block's other lines, not in a tab of their own shared with the entity extras.
+            drawSection(
+                "Extras: every block",
+                {
+                    {"Breaking time",        "extras.hardness",        Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Explosion resistance", "extras.blastResistance", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                130
+            );
+            drawSection(
+                "Extras: containers",
+                {
+                    {"Containers",      "extras.chest",            Kind::Bool, 0.0f,  0.0f, false, {} },
+                    {"Item icons",      "extras.chestIcons",       Kind::Bool, 0.0f,  0.0f, false, {} },
+                    {"Merge stacks",    "extras.chestIconsMerge",  Kind::Bool, 0.0f,  0.0f, false, {} },
+                    {"Icons per row",   "extras.chestIconsPerRow", Kind::Int,  1.0f, 27.0f, false, {} },
+                    {"Icon limit",      "extras.chestIconLimit",   Kind::Int,  0.0f, 54.0f, false, {} },
+                    {"Bookshelf",       "extras.bookshelf",        Kind::Bool, 0.0f,  0.0f, false, {} },
+                    {"Shelf",           "extras.shelf",            Kind::Bool, 0.0f,  0.0f, false, {} },
+                    {"Lectern",         "extras.lectern",          Kind::Bool, 0.0f,  0.0f, false, {} },
+                    {"Pot",             "extras.pot",              Kind::Bool, 0.0f,  0.0f, false, {} },
+                    {"Brewing stands",  "extras.brewing",          Kind::Bool, 0.0f,  0.0f, false, {} },
+                    {"Furnaces",        "extras.furnace",          Kind::Bool, 0.0f,  0.0f, false, {} },
+            },
+                140
+            );
+            drawSection(
+                "Extras: block entities",
+                {
+                    {"Jukebox",    "extras.jukebox",   Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Sign",       "extras.sign",      Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Banner",     "extras.banner",    Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Item frame", "extras.itemFrame", Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Flower pot", "extras.flowerPot", Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Painting",   "extras.painting",  Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Piston",     "extras.piston",    Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                160
+            );
+            drawSection(
+                "Extras: redstone",
+                {
+                    {"Redstone",        "extras.redstone",      Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Repeaters",       "extras.repeater",      Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Comparators",     "extras.comparator",    Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Dispensers",      "extras.dispenser",     Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Candles",         "extras.candle",        Kind::Bool, 0.0f, 0.0f, false, {}},
+                    {"Respawn anchors", "extras.respawnAnchor", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                180
+            );
+            drawSection(
+                "Extras: block states",
+                {
+                    {"Block states", "extras.misc", Kind::Bool, 0.0f, 0.0f, false, {}},
+            },
+                200
             );
             ImGui::EndTabItem();
         }
@@ -1084,79 +1144,8 @@ void ConfigUi::draw() {
             },
                 400
             );
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem(tr(locale, "Extras").c_str())) {
-            drawSection(
-                "Extras",
-                {
-                    {"Extras (all)", "extras.enabled", Kind::Bool, 0.0f, 0.0f, false, {}},
-            },
-                120
-            );
-            drawSection(
-                "Extras: every block",
-                {
-                    {"Breaking time",        "extras.hardness",        Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Explosion resistance", "extras.blastResistance", Kind::Bool, 0.0f, 0.0f, false, {}},
-            },
-                130
-            );
-            drawSection(
-                "Extras: containers",
-                {
-                    {"Containers",     "extras.chest",     Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Bookshelf",      "extras.bookshelf", Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Shelf",          "extras.shelf",     Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Lectern",        "extras.lectern",   Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Pot",            "extras.pot",       Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Brewing stands", "extras.brewing",   Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Furnaces",       "extras.furnace",   Kind::Bool, 0.0f, 0.0f, false, {}},
-            },
-                140
-            );
-            drawSection(
-                "Extras: block entities",
-                {
-                    {"Jukebox",    "extras.jukebox",   Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Sign",       "extras.sign",      Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Banner",     "extras.banner",    Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Item frame", "extras.itemFrame", Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Flower pot", "extras.flowerPot", Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Painting",   "extras.painting",  Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Piston",     "extras.piston",    Kind::Bool, 0.0f, 0.0f, false, {}},
-            },
-                160
-            );
-            drawSection(
-                "Extras: redstone",
-                {
-                    {"Redstone",        "extras.redstone",      Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Repeaters",       "extras.repeater",      Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Comparators",     "extras.comparator",    Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Dispensers",      "extras.dispenser",     Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Candles",         "extras.candle",        Kind::Bool, 0.0f, 0.0f, false, {}},
-                    {"Respawn anchors", "extras.respawnAnchor", Kind::Bool, 0.0f, 0.0f, false, {}},
-            },
-                180
-            );
-            drawSection(
-                "Extras: block states",
-                {
-                    {"Block states", "extras.misc", Kind::Bool, 0.0f, 0.0f, false, {}},
-            },
-                200
-            );
-            drawSection(
-                "Extras: containers",
-                {
-                    {"Item icons",      "extras.chestIcons",        Kind::Bool,  0.0f,  0.0f, false, {}   },
-                    {"Merge stacks",    "extras.chestIconsMerge",   Kind::Bool,  0.0f,  0.0f, false, {}   },
-                    {"Icons per row",   "extras.chestIconsPerRow",  Kind::Int,   1.0f, 27.0f, false, {}   },
-                    {"Icon limit",      "extras.chestIconLimit",    Kind::Int,   0.0f, 54.0f, false, {}   },
-            },
-                220
-            );
+            // The entity half of the extras: what an entity reports about itself belongs next to
+            // the entity's other lines.
             drawSection(
                 "Extras: entities",
                 {

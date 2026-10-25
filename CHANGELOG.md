@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
 ## [Unreleased]
+### Changed
+- The configuration screen and the server's `/insight gui` menu group their rows by what they
+  describe, instead of keeping "extras" sections of their own that split one subject in two. On the
+  client the Extras tab is gone: the block extras sit under **Block lines** (the container icon
+  options right below `Containers`, the two duplicate "Extras: containers" groups merged into one),
+  and the per-entity extras under **Entity info**. On a server the menu is down from eight groups to
+  four - **General**, **Block lines**, **Entity lines**, **Colours** - with the same rows moved into
+  the two new groups and the `extras.enabled` master switch in **General**, since it gates both
+  halves. No option is renamed and none moved inside the file, so an existing configuration loads
+  exactly as it did.
 
 ## [0.5.0] - 2026-10-25
 ### Added
