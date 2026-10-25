@@ -559,31 +559,71 @@ std::string valueLabel(Row const& row, std::string const& value, std::string con
 
 bool rowIsOn(Row const& row, std::string const& locale) { return currentValueText(row, locale) == tr(locale, "On"); }
 
+// A switch: a rounded track with a knob that slides to the right when it is on. ImGui has no switch
+// of its own, and a checkbox reads as "tick this box" rather than "this is on" - on a settings page
+// the second reading is the one that matters. Small on purpose (a line of text high), and flat: the
+// hover is spent on the cursor changing, not on the colours.
+constexpr ImU32 kSwitchOnTrack  = IM_COL32(0xe5, 0xe5, 0xe5, 255);
+constexpr ImU32 kSwitchOnKnob   = IM_COL32(0x17, 0x17, 0x17, 255);
+constexpr ImU32 kSwitchOffTrack = IM_COL32(0x28, 0x28, 0x28, 255);
+constexpr ImU32 kSwitchOffKnob  = IM_COL32(0xfa, 0xfa, 0xfa, 255);
 
-// Theme of the configuration screen: a dark, low-contrast panel with one blue
-// accent (used for the check mark, sliders, the open-row bar and the chevron).
+constexpr float kSwitchWidth  = 2.0f; // multiplier of the height
+constexpr float kSwitchHeight = 1.2f; // multiplier of the text line height
+
+bool toggleSwitch(char const* id, bool* value) {
+    float const height = ImGui::GetTextLineHeight() * kSwitchHeight;
+    float const width  = height * kSwitchWidth;
+    float const radius = height * 0.5f;
+
+    ImVec2 const origin  = ImGui::GetCursorScreenPos();
+    bool const   pressed = ImGui::InvisibleButton(id, ImVec2(width, height));
+    if (pressed) {
+        *value = !*value;
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+
+    ImDrawList* draw  = ImGui::GetWindowDrawList();
+    ImU32 const track = *value ? kSwitchOnTrack : kSwitchOffTrack;
+    ImU32 const knob  = *value ? kSwitchOnKnob : kSwitchOffKnob;
+    float const knobX = *value ? origin.x + width - radius : origin.x + radius;
+
+    draw->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), track, radius);
+    draw->AddCircleFilled(ImVec2(knobX, origin.y + radius), radius - 1.5f, knob);
+    return pressed;
+}
+
+
+// Theme of the configuration screen, after shadcn/ui's zinc palette: one neutral ramp, 1px borders,
+// 10px radii, no gradients and no second accent colour - the accent is near-white on near-black, the
+// way a shadcn primary button is.
 void applyStyle() {
     ImGuiStyle& s = ImGui::GetStyle();
     ImGui::StyleColorsDark(&s);
 
-    s.WindowRounding          = 8.0f;
-    s.ChildRounding           = 6.0f;
-    s.FrameRounding           = 5.0f;
-    s.PopupRounding           = 6.0f;
+    s.WindowRounding          = 10.0f;
+    s.ChildRounding           = 10.0f;
+    s.FrameRounding           = 8.0f;
+    s.PopupRounding           = 10.0f;
     s.ScrollbarRounding       = 8.0f;
-    s.GrabRounding            = 5.0f;
+    s.GrabRounding            = 8.0f;
+    s.TabRounding             = 8.0f;
     s.WindowBorderSize        = 1.0f;
     s.ChildBorderSize         = 1.0f;
-    s.FrameBorderSize         = 0.0f;
-    s.WindowPadding           = ImVec2(14.0f, 12.0f);
+    s.FrameBorderSize         = 1.0f;
+    s.PopupBorderSize         = 1.0f;
+    s.WindowPadding           = ImVec2(16.0f, 14.0f);
     s.FramePadding            = ImVec2(10.0f, 6.0f);
-    s.ItemSpacing             = ImVec2(10.0f, 7.0f);
+    s.ItemSpacing             = ImVec2(10.0f, 8.0f);
     s.ItemInnerSpacing        = ImVec2(8.0f, 6.0f);
     s.IndentSpacing           = 16.0f;
-    s.ScrollbarSize           = 12.0f;
+    s.ScrollbarSize           = 10.0f;
+    s.GrabMinSize             = 12.0f;
     s.WindowTitleAlign        = ImVec2(0.0f, 0.5f);
-    s.SeparatorTextBorderSize = 2.0f;
-    s.SeparatorTextPadding    = ImVec2(0.0f, 8.0f);
+    s.SeparatorTextBorderSize = 1.0f;
+    s.SeparatorTextPadding    = ImVec2(0.0f, 10.0f);
 
     auto rgb = [](int r, int g, int b, float a = 1.0f) {
         return ImVec4(
@@ -593,124 +633,64 @@ void applyStyle() {
             a
         );
     };
+    // zinc-950 / zinc-900 / zinc-800 / zinc-700 / zinc-400 / zinc-100 / zinc-50
+    ImVec4 const bg      = rgb(0x09, 0x09, 0x0b, 0.98f);
+    ImVec4 const card    = rgb(0x09, 0x09, 0x0b);
+    ImVec4 const popup   = rgb(0x11, 0x11, 0x13, 0.98f);
+    ImVec4 const muted   = rgb(0x18, 0x18, 0x1b);
+    ImVec4 const border  = rgb(0x27, 0x27, 0x2a);
+    ImVec4 const hover   = rgb(0x27, 0x27, 0x2a);
+    ImVec4 const active  = rgb(0x3f, 0x3f, 0x46);
+    ImVec4 const dim     = rgb(0xa1, 0xa1, 0xaa);
+    ImVec4 const strong  = rgb(0xfa, 0xfa, 0xfa);
+    ImVec4 const accent  = rgb(0xd4, 0xd4, 0xd8);
+
     ImVec4* col                        = s.Colors;
-    col[ImGuiCol_Text]                 = rgb(228, 233, 240);
-    col[ImGuiCol_TextDisabled]         = rgb(138, 148, 164);
-    col[ImGuiCol_WindowBg]             = rgb(19, 22, 27, 0.98f);
-    col[ImGuiCol_ChildBg]              = rgb(25, 29, 35);
-    col[ImGuiCol_PopupBg]              = rgb(25, 29, 35, 0.98f);
-    col[ImGuiCol_Border]               = rgb(47, 54, 64);
+    col[ImGuiCol_Text]                 = strong;
+    col[ImGuiCol_TextDisabled]         = dim;
+    col[ImGuiCol_WindowBg]             = bg;
+    col[ImGuiCol_ChildBg]              = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    col[ImGuiCol_PopupBg]              = popup;
+    col[ImGuiCol_Border]               = border;
     col[ImGuiCol_BorderShadow]         = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-    col[ImGuiCol_FrameBg]              = rgb(38, 44, 52);
-    col[ImGuiCol_FrameBgHovered]       = rgb(48, 56, 66);
-    col[ImGuiCol_FrameBgActive]        = rgb(58, 68, 80);
-    col[ImGuiCol_TitleBg]              = rgb(25, 29, 35);
-    col[ImGuiCol_TitleBgActive]        = rgb(31, 37, 45);
-    col[ImGuiCol_MenuBarBg]            = rgb(25, 29, 35);
+    col[ImGuiCol_FrameBg]              = muted;
+    col[ImGuiCol_FrameBgHovered]       = hover;
+    col[ImGuiCol_FrameBgActive]        = active;
+    col[ImGuiCol_TitleBg]              = card;
+    col[ImGuiCol_TitleBgActive]        = card;
+    col[ImGuiCol_TitleBgCollapsed]     = card;
+    col[ImGuiCol_MenuBarBg]            = card;
     col[ImGuiCol_ScrollbarBg]          = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-    col[ImGuiCol_ScrollbarGrab]        = rgb(58, 66, 78);
-    col[ImGuiCol_ScrollbarGrabHovered] = rgb(72, 82, 96);
-    col[ImGuiCol_ScrollbarGrabActive]  = rgb(88, 160, 255);
-    col[ImGuiCol_CheckMark]            = rgb(88, 160, 255);
-    col[ImGuiCol_SliderGrab]           = rgb(88, 160, 255);
-    col[ImGuiCol_SliderGrabActive]     = rgb(120, 180, 255);
-    col[ImGuiCol_Button]               = rgb(38, 44, 52);
-    col[ImGuiCol_ButtonHovered]        = rgb(52, 62, 74);
-    col[ImGuiCol_ButtonActive]         = rgb(88, 160, 255);
-    col[ImGuiCol_Header]               = rgb(38, 46, 56);
-    col[ImGuiCol_HeaderHovered]        = rgb(46, 56, 68);
-    col[ImGuiCol_HeaderActive]         = rgb(58, 70, 84);
-    col[ImGuiCol_Separator]            = rgb(47, 54, 64);
-    col[ImGuiCol_SeparatorHovered]     = rgb(88, 160, 255, 0.7f);
-    col[ImGuiCol_SeparatorActive]      = rgb(88, 160, 255);
-    col[ImGuiCol_TextSelectedBg]       = rgb(88, 160, 255, 0.35f);
-    col[ImGuiCol_TextLink]             = rgb(88, 160, 255);
-    col[ImGuiCol_NavHighlight]         = rgb(88, 160, 255);
-}
-
-// The value on a row must stay on a single line: the format rows hold the whole
-// multi-line format string, and drawing that verbatim pushed it over the
-// neighbouring rows and out of the window.
-std::string oneLineValue(std::string const& text, float maxWidth) {
-    std::string out;
-    out.reserve(text.size());
-    bool lastWasSpace = false;
-    for (char const ch : text) {
-        if (ch == '\n' || ch == '\r' || ch == '\t' || ch == ' ') {
-            if (!lastWasSpace && !out.empty()) {
-                out.push_back(' ');
-            }
-            lastWasSpace = true;
-            continue;
-        }
-        out.push_back(ch);
-        lastWasSpace = false;
-    }
-    while (!out.empty() && out.back() == ' ') {
-        out.pop_back();
-    }
-    if (maxWidth <= 8.0f || ImGui::CalcTextSize(out.c_str()).x <= maxWidth) {
-        return out;
-    }
-    static char const* const dots = "...";
-    while (!out.empty() && ImGui::CalcTextSize((out + dots).c_str()).x > maxWidth) {
-        out.pop_back();
-        // never cut a UTF-8 sequence in half
-        while (!out.empty() && (static_cast<unsigned char>(out.back()) & 0xC0) == 0x80) {
-            out.pop_back();
-        }
-    }
-    return out.empty() ? std::string{} : out + dots;
-}
-
-// A clickable list row: label left, current value right, ">" affordance.
-// Returns true when it was clicked (the caller then shows the inline editor).
-bool rowHeader(char const* id, std::string const& label, std::string const& value, bool open) {
-    ImGui::PushID(id);
-    ImGuiStyle const& style   = ImGui::GetStyle();
-    bool const        clicked = ImGui::Selectable(
-        "##row",
-        false,
-        ImGuiSelectableFlags_None,
-        ImVec2(0.0f, ImGui::GetFrameHeight() + style.FramePadding.y * 0.5f)
-    );
-
-    ImVec2 const min  = ImGui::GetItemRectMin();
-    ImVec2 const max  = ImGui::GetItemRectMax();
-    ImDrawList*  draw = ImGui::GetWindowDrawList();
-    float const  pad  = style.FramePadding.x;
-    float const  fh   = ImGui::GetTextLineHeight();
-    float const  y    = min.y + (max.y - min.y - fh) * 0.5f;
-
-    float const textX = min.x + pad + 2.0f;
-    // accent bar on the expanded row, chevron next to the value
-    if (open) {
-        draw->AddRectFilled(
-            ImVec2(min.x + 1.0f, min.y + 4.0f),
-            ImVec2(min.x + 4.0f, max.y - 4.0f),
-            ImGui::GetColorU32(ImGuiCol_CheckMark),
-            2.0f
-        );
-    }
-    char const* const arrow  = open ? "v" : ">";
-    float const       arrowW = ImGui::CalcTextSize(arrow).x;
-    if (!value.empty()) {
-        float const       valueRight = max.x - pad - arrowW - 10.0f;
-        float const       valueLeft  = textX + ImGui::CalcTextSize(label.c_str()).x + 12.0f;
-        std::string const shown      = oneLineValue(value, valueRight - valueLeft);
-        if (!shown.empty()) {
-            float const  valueW = ImGui::CalcTextSize(shown.c_str()).x;
-            ImVec4 const dim    = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
-            draw->AddText(ImVec2(valueRight - valueW, y), ImGui::ColorConvertFloat4ToU32(dim), shown.c_str());
-        }
-    }
-    ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-    accent.w      = open ? 0.95f : 0.55f;
-    draw->AddText(ImVec2(max.x - pad - arrowW, y), ImGui::ColorConvertFloat4ToU32(accent), arrow);
-    draw->AddText(ImVec2(textX, y), ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
-
-    ImGui::PopID();
-    return clicked;
+    col[ImGuiCol_ScrollbarGrab]        = border;
+    col[ImGuiCol_ScrollbarGrabHovered] = active;
+    col[ImGuiCol_ScrollbarGrabActive]  = accent;
+    col[ImGuiCol_CheckMark]            = strong;
+    col[ImGuiCol_SliderGrab]           = strong;
+    col[ImGuiCol_SliderGrabActive]     = accent;
+    col[ImGuiCol_Button]               = muted;
+    col[ImGuiCol_ButtonHovered]        = hover;
+    col[ImGuiCol_ButtonActive]         = active;
+    col[ImGuiCol_Header]               = muted;
+    col[ImGuiCol_HeaderHovered]        = hover;
+    col[ImGuiCol_HeaderActive]         = active;
+    col[ImGuiCol_Separator]            = border;
+    col[ImGuiCol_SeparatorHovered]     = active;
+    col[ImGuiCol_SeparatorActive]      = accent;
+    col[ImGuiCol_Tab]                  = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    col[ImGuiCol_TabHovered]           = muted;
+    col[ImGuiCol_TabSelected]          = muted;
+    col[ImGuiCol_TabSelectedOverline]  = accent;
+    col[ImGuiCol_TabDimmed]            = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    col[ImGuiCol_TabDimmedSelected]    = muted;
+    col[ImGuiCol_TableHeaderBg]        = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    col[ImGuiCol_TableBorderStrong]    = border;
+    col[ImGuiCol_TableBorderLight]     = border;
+    col[ImGuiCol_TableRowBg]           = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    col[ImGuiCol_TableRowBgAlt]        = ImVec4(1.0f, 1.0f, 1.0f, 0.015f);
+    col[ImGuiCol_TextSelectedBg]       = rgb(0x3f, 0x3f, 0x46, 0.7f);
+    col[ImGuiCol_TextLink]             = accent;
+    col[ImGuiCol_NavHighlight]         = accent;
+    col[ImGuiCol_NavCursor]            = accent;
 }
 
 } // namespace
@@ -830,33 +810,51 @@ void ConfigUi::draw() {
     ImGuiStyle const& style   = ImGui::GetStyle();
     float const       footerH = ImGui::GetFrameHeight() + style.ItemSpacing.y * 2.0f;
 
-    // inline editor of one setting; edits are only queued (the game thread owns
-    // the config file)
+    // The widget of one setting, drawn inline in the row's value column. Edits are only queued (the
+    // game thread owns the config file).
     auto editor = [&](Row const& row, int id) {
         ImGui::PushID(id);
         ImGui::SetNextItemWidth(-1.0f);
         switch (row.kind) {
         case Kind::Bool: {
             bool value = rowIsOn(row, locale);
-            if (ImGui::Checkbox("##value", &value)) {
+            // The switch sits against the right edge of the row: that is where the eye looks for a
+            // state, and it lines the switches of a group up in one column instead of one per label.
+            float const width = ImGui::GetTextLineHeight() * kSwitchHeight * kSwitchWidth;
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - width);
+            if (toggleSwitch("##value", &value)) {
                 queueEdit(row.option, value ? "true" : "false");
             }
             break;
         }
         case Kind::Float:
         case Kind::Int: {
-            // the value is loaded when the row opens and kept while it stays
-            // open: taking it from the config every frame would cancel the drag
+            // The row keeps its own value while it is dragged - ImGui adds the delta to the value it
+            // is handed, so re-reading the config every frame would undo the drag - and the edit is
+            // queued once, when the drag ends.
             bool const isInt = row.kind == Kind::Int;
-            if (mSliderRow != row.option) {
-                mSliderRow   = row.option;
-                mSliderValue = static_cast<float>(std::atof(currentValueText(row, locale).c_str()));
+            float&     value = mValues[row.option];
+            if (mActiveSlider != row.option) {
+                value = static_cast<float>(std::atof(currentValueText(row, locale).c_str()));
             }
-            ImGui::SliderFloat("##value", &mSliderValue, row.lo, row.hi, isInt ? "%.0f" : "%.2f");
+            if (isInt) {
+                int shown = static_cast<int>(std::lround(value));
+                if (ImGui::SliderInt("##value", &shown, static_cast<int>(row.lo), static_cast<int>(row.hi))) {
+                    value = static_cast<float>(shown);
+                }
+            } else {
+                ImGui::SliderFloat("##value", &value, row.lo, row.hi, "%.2f");
+            }
+            if (ImGui::IsItemActivated()) {
+                mActiveSlider = row.option;
+            }
+            if (ImGui::IsItemDeactivated() && mActiveSlider == row.option) {
+                mActiveSlider.clear();
+            }
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 queueEdit(
                     row.option,
-                    isInt ? std::to_string(static_cast<int>(mSliderValue)) : util::trimNumber(mSliderValue, 2)
+                    isInt ? std::to_string(static_cast<int>(std::lround(value))) : util::trimNumber(value, 2)
                 );
             }
             break;
@@ -885,21 +883,26 @@ void ConfigUi::draw() {
             break;
         }
         case Kind::Text: {
-            // one persistent buffer per editing session: refilling it from the
-            // config every frame would fight ImGui's own edit state and make the
-            // field unusable after the first change. Closing the row clears the
-            // session, so reopening it always shows the current config value.
-            if (mEditRow != row.option) {
-                mEditRow = row.option;
-                std::snprintf(mEditBuffer, sizeof(mEditBuffer), "%s", currentValueText(row, locale).c_str());
+            // one buffer per row, refilled from the config whenever the row is not the one being
+            // typed into: this is what makes the field usable at all, and having one per row is what
+            // lets several text rows be visible at once
+            auto& buffer = mText[row.option];
+            if (mActiveText != row.option) {
+                std::snprintf(buffer.data(), buffer.size(), "%s", currentValueText(row, locale).c_str());
             }
             if (row.multiline) {
-                ImGui::InputTextMultiline("##value", mEditBuffer, sizeof(mEditBuffer), ImVec2(-1.0f, 84.0f));
+                ImGui::InputTextMultiline("##value", buffer.data(), buffer.size(), ImVec2(-1.0f, 84.0f));
             } else {
-                ImGui::InputText("##value", mEditBuffer, sizeof(mEditBuffer));
+                ImGui::InputText("##value", buffer.data(), buffer.size());
+            }
+            if (ImGui::IsItemActivated()) {
+                mActiveText = row.option;
+            }
+            if (ImGui::IsItemDeactivated() && mActiveText == row.option) {
+                mActiveText.clear();
             }
             if (ImGui::IsItemDeactivatedAfterEdit()) {
-                queueEdit(row.option, mEditBuffer);
+                queueEdit(row.option, buffer.data());
             }
             break;
         }
@@ -907,35 +910,38 @@ void ConfigUi::draw() {
         ImGui::PopID();
     };
 
-    // one titled group of rows
+    // One titled group of rows: label on the left, the widget on the right, one line per setting.
+    // The two columns are a table, so the widgets line up across rows whatever the label lengths are.
     auto drawSection = [&](char const* titleKey, std::vector<Row> const& rows, int idBase) {
-        ImGui::SeparatorText(tr(locale, titleKey).c_str());
-        for (size_t i = 0; i < rows.size(); ++i) {
-            Row const& row  = rows[i];
-            bool const open = mOpenRow == row.option;
-            if (rowHeader(
-                    row.option.c_str(),
-                    tr(locale, row.label),
-                    valueLabel(row, currentValueText(row, locale), locale),
-                    open
-                )) {
-                mOpenRow = open ? std::string{} : row.option;
-            }
-            if (open) {
-                ImGui::Indent();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.63f, 0.63f, 0.67f, 1.0f));
+        ImGui::TextUnformatted(tr(locale, titleKey).c_str());
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+        if (rows.empty()) {
+            return;
+        }
+        float labelW = 0.0f;
+        for (auto const& row : rows) {
+            labelW = std::max(labelW, ImGui::CalcTextSize(tr(locale, row.label).c_str()).x);
+        }
+        labelW = std::min(labelW + style.ItemSpacing.x * 2.0f, ImGui::GetContentRegionAvail().x * 0.55f);
+        if (ImGui::BeginTable(
+                titleKey,
+                2,
+                ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_PadOuterX
+            )) {
+            ImGui::TableSetupColumn("##label", ImGuiTableColumnFlags_WidthFixed, labelW);
+            ImGui::TableSetupColumn("##value", ImGuiTableColumnFlags_WidthStretch);
+            for (size_t i = 0; i < rows.size(); ++i) {
+                Row const& row = rows[i];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(tr(locale, row.label).c_str());
+                ImGui::TableSetColumnIndex(1);
                 editor(row, idBase + static_cast<int>(i));
-                ImGui::Unindent();
-                ImGui::Spacing();
-            } else {
-                // closing the row ends its editing session: reopening it loads the
-                // current values from the config again
-                if (mEditRow == row.option) {
-                    mEditRow.clear();
-                }
-                if (mSliderRow == row.option) {
-                    mSliderRow.clear();
-                }
             }
+            ImGui::EndTable();
         }
         ImGui::Spacing();
     };
@@ -944,8 +950,59 @@ void ConfigUi::draw() {
     // Tabbed rather than one long column: a dozen stacked sections were hard to
     // scan, and the panel lines and the extras groups each belong together.
     ImGui::BeginChild("settingsList", ImVec2(0.0f, -footerH));
-    if (ImGui::BeginTabBar("settingsTabs")) {
-        if (ImGui::BeginTabItem(tr(locale, "General").c_str())) {
+    // One pill of the tab list, drawn the way shadcn draws a segmented control: a quiet track, the
+    // selected pill lifted with a muted fill and a near-white label.
+    auto tabPill = [&](char const* label, bool active, int id) {
+        ImGuiStyle const& st   = ImGui::GetStyle();
+        ImVec2 const      size(ImGui::CalcTextSize(label).x + st.FramePadding.x * 2.6f, ImGui::GetFrameHeight());
+        ImVec2 const      origin = ImGui::GetCursorScreenPos();
+
+        ImGui::PushID(2000 + id);
+        bool const clicked = ImGui::InvisibleButton("##tab", size);
+        bool const hovered = ImGui::IsItemHovered();
+        ImGui::PopID();
+        if (hovered) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        }
+
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        if (active) {
+            draw->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(0x27, 0x27, 0x2a, 255), 8.0f);
+        } else if (hovered) {
+            draw->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(0x18, 0x18, 0x1b, 255), 8.0f);
+        }
+        ImVec2 const textSize = ImGui::CalcTextSize(label);
+        draw->AddText(
+            ImVec2(origin.x + (size.x - textSize.x) * 0.5f, origin.y + (size.y - textSize.y) * 0.5f),
+            active ? IM_COL32(0xfa, 0xfa, 0xfa, 255) : IM_COL32(0xa1, 0xa1, 0xaa, 255),
+            label
+        );
+        return clicked;
+    };
+
+    struct TabName {
+        char const* key;
+        int         index;
+    };
+
+    TabName const tabs[] = {
+        {"General",     0},
+        {"Block lines", 1},
+        {"Entity info", 2},
+        {"Appearance",  3},
+        {"Keys",        4},
+    };
+    for (auto const& tab : tabs) {
+        if (tab.index != 0) {
+            ImGui::SameLine(0.0f, 6.0f);
+        }
+        if (tabPill(tr(locale, tab.key).c_str(), mTab == tab.index, tab.index)) {
+            mTab = tab.index;
+        }
+    }
+    ImGui::Spacing();
+    ImGui::Spacing();
+        if (mTab == 0) { // General
             drawSection(
                 "General",
                 {
@@ -963,10 +1020,9 @@ void ConfigUi::draw() {
             },
                 0
             );
-            ImGui::EndTabItem();
         }
         // The block panel: one switch per field, grouped by the line each feeds.
-        if (ImGui::BeginTabItem(tr(locale, "Block lines").c_str())) {
+        if (mTab == 1) { // Block lines
             drawSection(
                 "Title line",
                 {
@@ -1065,12 +1121,11 @@ void ConfigUi::draw() {
             },
                 200
             );
-            ImGui::EndTabItem();
         }
         // The entity panel is a layout of its own (renderEntityText) with its own
         // switches: hit points instead of light level and emission, which describe a
         // world position rather than the entity.
-        if (ImGui::BeginTabItem(tr(locale, "Entity info").c_str())) {
+        if (mTab == 2) { // Entity info
             drawSection(
                 "Entity info",
                 {
@@ -1154,13 +1209,12 @@ void ConfigUi::draw() {
             },
                 230
             );
-            ImGui::EndTabItem();
         }
         // Appearance and colours used to sit in a column of their own beside the tabs. That
         // column took half the window, so the window had to be larger than the panel it
         // configures and covered it; as a tab they get the full width and the panel stays in
         // view while they are edited.
-        if (ImGui::BeginTabItem(tr(locale, "Appearance").c_str())) {
+        if (mTab == 3) { // Appearance
             drawSection(
                 "Appearance",
                 {
@@ -1208,9 +1262,8 @@ void ConfigUi::draw() {
             },
                 1100
             );
-            ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(tr(locale, "Keys").c_str())) {
+        if (mTab == 4) { // Keys
             drawSection(
                 "Keys",
                 {
@@ -1219,10 +1272,7 @@ void ConfigUi::draw() {
             },
                 220
             );
-            ImGui::EndTabItem();
         }
-        ImGui::EndTabBar();
-    }
     ImGui::EndChild();
 
     // ---------- footer ---------------------------------------------------
@@ -1243,9 +1293,15 @@ void ConfigUi::draw() {
         queueEdit("reload", "");
     }
     ImGui::SameLine();
+    // the primary action, the way shadcn draws it: near-white fill, dark label
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.98f, 0.98f, 0.98f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.90f, 0.90f, 0.92f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.80f, 0.80f, 0.82f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.094f, 0.094f, 0.106f, 1.0f));
     if (ImGui::Button(tr(locale, "Close").c_str())) {
         setVisible(false);
     }
+    ImGui::PopStyleColor(4);
 
     ImGui::End();
 }

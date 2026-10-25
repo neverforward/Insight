@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -85,21 +87,20 @@ private:
     std::vector<Edit> mPending;
 
     // screen state (render thread only)
-    std::string mOpenRow;
+    // Every row carries its own widget now, so a numeric or text row keeps what it is being given
+    // here while it is being edited - re-reading the config every frame would undo a drag (ImGui
+    // adds the delta to the value it is handed) or fight ImGui's own edit state - and mirrors the
+    // config again as soon as the row is left.
+    std::map<std::string, float>                  mValues;
+    std::map<std::string, std::array<char, 1024>> mText;
+    int                                           mTab = 0;
+    std::string                                   mActiveSlider;
+    std::string                                   mActiveText;
     // 0 = open screen, 1 = toggle info. Atomic because wantsKeyboard() is read from the
     // game thread while the screen sets it on the render thread.
     std::atomic<int> mCapturingKey{-1};
     // Whether an ImGui text field of this screen has the caret (published by draw()).
     std::atomic<bool> mWantTextInput{false};
-    // text rows keep one persistent buffer: refilling it from the config every
-    // frame would fight with ImGui's own edit state (and make the field
-    // unusable after the first edit)
-    char        mEditBuffer[1024] = {};
-    std::string mEditRow;
-    // slider rows keep one value too: re-reading the config on every frame would
-    // undo a drag (ImGui adds the drag delta to the value it is handed)
-    std::string mSliderRow;
-    float       mSliderValue = 0.0f;
 };
 
 } // namespace insight

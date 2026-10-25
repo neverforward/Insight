@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the panel in view while a setting is changed. Its size and position are applied once, on first
   open: dragging it now keeps the result, where before every frame reset the size and a resize
   snapped back as soon as the mouse was released.
+- Every row of the screen carries its own control, so nothing has to be opened before it can be
+  changed: a switch you click once, a slider you drag, a dropdown, or a text field, laid out in two
+  columns with the label on the left and the control on the right. A row keeps what it is being given
+  while it is being edited and saves when the edit ends, which is also what stops a drag from being
+  undone. A small switch replaces the checkbox (`#e5e5e5` track with a `#171717` knob when on,
+  `#282828` with `#fafafa` when off, no hover recolour) and sits at the right end of its row.
+- The screen was restyled: one neutral palette instead of a blue accent on a warm dark grey (background
+  `#09090b`, controls `#18181b`, borders `#27272a`, text `#fafafa` and `#a1a1aa`, the accent
+  near-white), 1px borders, 10px radii, a segmented pill tab list in place of the tab bar's underline,
+  muted captions in place of separators, and a filled primary button at the bottom.
 
 ### Removed
 - The preview panel in the configuration screen. It drew its own copy of the panel with ImGui, but
