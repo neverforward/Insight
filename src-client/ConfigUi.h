@@ -40,7 +40,6 @@ public:
     void setLocale(std::string locale);
 
     /// Text shown in the preview box (the panel the client currently renders).
-    void setPreviewText(std::string text);
 
     // --- input -----------------------------------------------------------
     /// Queued on the game thread; used only for "press a key to bind", every
@@ -74,7 +73,6 @@ private:
 
     std::mutex         mMutex;
     std::vector<Event> mEvents;
-    std::string        mPreviewText;
     std::string        mLocale;
     std::string        mStatusMessage;
     bool               mStatusOk = true;

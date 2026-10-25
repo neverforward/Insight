@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the two new groups and the `extras.enabled` master switch in **General**, since it gates both
   halves. No option is renamed and none moved inside the file, so an existing configuration loads
   exactly as it did.
+- The configuration screen is one column of tabs. The appearance settings and the colours used to
+  have a column of their own beside the list, which cost half the window, so the window had to be
+  larger than the panel it configures and covered it; they are an **Appearance** tab now, and the
+  list has the whole width.
+- The screen opens at 62% of the display, capped at 1100x780, instead of 75% - small enough to leave
+  the panel in view while a setting is changed. Its size and position are applied once, on first
+  open: dragging it now keeps the result, where before every frame reset the size and a resize
+  snapped back as soon as the mouse was released.
+
+### Removed
+- The preview panel in the configuration screen. It drew its own copy of the panel with ImGui, but
+  the overlay draws the real one with the game's renderer and this screen never covered it, so the
+  copy only ever disagreed with what was on screen. The two messages it needed
+  (`Preview`, `Nothing under the crosshair`) are gone from `lang/` with it.
 
 ## [0.5.0] - 2026-10-25
 ### Added

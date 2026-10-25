@@ -735,10 +735,6 @@ void ConfigUi::setLocale(std::string locale) {
     mLocale = std::move(locale);
 }
 
-void ConfigUi::setPreviewText(std::string text) {
-    std::lock_guard lock(mMutex);
-    mPreviewText = std::move(text);
-}
 
 void ConfigUi::setStatus(bool ok, std::string message) {
     std::lock_guard lock(mMutex);
@@ -785,14 +781,12 @@ void ConfigUi::draw() {
 
     // --- state handed over by the game thread ----------------------------
     std::vector<Event> events;
-    std::string        preview;
     std::string        locale;
     std::string        status;
     bool               statusOk = true;
     {
         std::lock_guard lock(mMutex);
         events.swap(mEvents);
-        preview  = mPreviewText;
         locale   = mLocale;
         status   = mStatusMessage;
         statusOk = mStatusOk;
@@ -818,13 +812,12 @@ void ConfigUi::draw() {
         return;
     }
 
-    auto const& cfg = Insight::cfg();
-
-    // 75% of the screen, centred; re-evaluated every frame so a resolution or
-    // window-size change is followed
+    // Smaller than the panel it configures, and placed only once: from then on the size the
+    // player drags is kept, instead of being reset to a fraction of the screen every frame.
     ImVec2 const display = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowSize(ImVec2(display.x * 0.75f, display.y * 0.75f), ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImVec2 const size(std::min(display.x * 0.62f, 1100.0f), std::min(display.y * 0.62f, 780.0f));
+    ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
     ImGui::Begin(
         tr(locale, "Insight configuration").c_str(),
         nullptr,
@@ -836,8 +829,6 @@ void ConfigUi::draw() {
 
     ImGuiStyle const& style   = ImGui::GetStyle();
     float const       footerH = ImGui::GetFrameHeight() + style.ItemSpacing.y * 2.0f;
-    float const       paneW   = ImGui::GetContentRegionAvail().x;
-    float const       leftW   = paneW * 0.5f - style.ItemSpacing.x * 0.5f;
 
     // inline editor of one setting; edits are only queued (the game thread owns
     // the config file)
@@ -952,8 +943,7 @@ void ConfigUi::draw() {
     // ---------- left column: settings ------------------------------------
     // Tabbed rather than one long column: a dozen stacked sections were hard to
     // scan, and the panel lines and the extras groups each belong together.
-    ImGui::BeginGroup();
-    ImGui::BeginChild("settingsList", ImVec2(leftW, -footerH));
+    ImGui::BeginChild("settingsList", ImVec2(0.0f, -footerH));
     if (ImGui::BeginTabBar("settingsTabs")) {
         if (ImGui::BeginTabItem(tr(locale, "General").c_str())) {
             drawSection(
@@ -1166,6 +1156,60 @@ void ConfigUi::draw() {
             );
             ImGui::EndTabItem();
         }
+        // Appearance and colours used to sit in a column of their own beside the tabs. That
+        // column took half the window, so the window had to be larger than the panel it
+        // configures and covered it; as a tab they get the full width and the panel stays in
+        // view while they are edited.
+        if (ImGui::BeginTabItem(tr(locale, "Appearance").c_str())) {
+            drawSection(
+                "Appearance",
+                {
+                    {"Text colour",   "textColor",       Kind::Text,  0.0f, 0.0f, false, {}},
+                    {"Font size",     "fontSize",        Kind::Float, 0.5f, 2.0f, false, {}},
+                    {"Panel",         "background",      Kind::Bool,  0.0f, 0.0f, false, {}},
+                    {"Panel opacity", "backgroundAlpha", Kind::Float, 0.0f, 1.0f, false, {}},
+                    {"Text shadow",   "shadow",          Kind::Bool,  0.0f, 0.0f, false, {}},
+                    {"Max width",     "maxWidth",        Kind::Float, 0.0f, 1.0f, false, {}},
+                    {"Fade time",     "transitionTime",  Kind::Float, 0.0f, 1.0f, false, {}},
+                    {"Offset X",      "offsetX",         Kind::Float, 0.0f, 1.0f, false, {}},
+                    {"Offset Y",      "offsetY",         Kind::Float, 0.0f, 1.0f, false, {}},
+                    {"Anchor",
+                     "anchor",                           Kind::Enum,
+                     0.0f,                                                  0.0f,
+                     false,                                                              {"top_left",
+                      "top_center",
+                      "top_right",
+                      "middle_left",
+                      "center",
+                      "middle_right",
+                      "bottom_left",
+                      "bottom_center",
+                      "bottom_right"}                                   },
+            },
+                1000
+            );
+
+            ImGui::Spacing();
+
+            drawSection(
+                "Colours",
+                {
+                    {"Name colour",            "colors.name",           Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Facing colour",          "colors.facing",         Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Type id colour",         "colors.identifier",     Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Translation key colour", "colors.translationKey", Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"X colour",               "colors.x",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Y colour",               "colors.y",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Z colour",               "colors.z",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Distance colour",        "colors.distance",       Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Label colour",           "colors.label",          Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Value colour",           "colors.value",          Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+                    {"Health colour",          "colors.health",         Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
+            },
+                1100
+            );
+            ImGui::EndTabItem();
+        }
         if (ImGui::BeginTabItem(tr(locale, "Keys").c_str())) {
             drawSection(
                 "Keys",
@@ -1180,94 +1224,6 @@ void ConfigUi::draw() {
         ImGui::EndTabBar();
     }
     ImGui::EndChild();
-    ImGui::EndGroup();
-
-    ImGui::SameLine();
-
-    // ---------- right column: preview + appearance ------------------------
-    ImGui::BeginGroup();
-    ImGui::BeginChild("rightPane", ImVec2(0.0f, -footerH));
-
-    ImGui::SeparatorText(tr(locale, "Preview").c_str());
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.055f, 0.070f, 0.090f, 1.0f));
-    ImGui::BeginChild("preview", ImVec2(-1.0f, ImGui::GetContentRegionAvail().y * 0.45f), ImGuiChildFlags_Borders);
-    {
-        // The preview *is* the info display: the overlay draws the content it is
-        // currently showing, with the same colour runs, shadow and font (only
-        // scaled by the configured font size), so what you see here is exactly
-        // what the panel renders.
-        ImVec2 const origin = ImGui::GetCursorScreenPos();
-        ImVec2 const avail  = ImGui::GetContentRegionAvail();
-        if (preview.empty()) {
-            ImGui::TextDisabled("%s", tr(locale, "Nothing under the crosshair").c_str());
-        } else {
-            // the preview area stands in for the screen: the panel is placed in it
-            // with the same anchor/offset rules, so those rows show their effect
-            ImGuiOverlay::drawContentPreview(
-                origin.x,
-                origin.y,
-                avail.x,
-                avail.y,
-                std::clamp(cfg.client.fontSize, 0.5f, 2.5f),
-                cfg.client.anchor,
-                cfg.client.offsetX,
-                cfg.client.offsetY
-            );
-        }
-    }
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
-
-    ImGui::Spacing();
-    drawSection(
-        "Appearance",
-        {
-            {"Text colour",   "textColor",       Kind::Text,  0.0f, 0.0f, false, {}},
-            {"Font size",     "fontSize",        Kind::Float, 0.5f, 2.0f, false, {}},
-            {"Panel",         "background",      Kind::Bool,  0.0f, 0.0f, false, {}},
-            {"Panel opacity", "backgroundAlpha", Kind::Float, 0.0f, 1.0f, false, {}},
-            {"Text shadow",   "shadow",          Kind::Bool,  0.0f, 0.0f, false, {}},
-            {"Max width",     "maxWidth",        Kind::Float, 0.0f, 1.0f, false, {}},
-            {"Fade time",     "transitionTime",  Kind::Float, 0.0f, 1.0f, false, {}},
-            {"Offset X",      "offsetX",         Kind::Float, 0.0f, 1.0f, false, {}},
-            {"Offset Y",      "offsetY",         Kind::Float, 0.0f, 1.0f, false, {}},
-            {"Anchor",
-             "anchor",                           Kind::Enum,
-             0.0f,                                                  0.0f,
-             false,                                                              {"top_left",
-              "top_center",
-              "top_right",
-              "middle_left",
-              "center",
-              "middle_right",
-              "bottom_left",
-              "bottom_center",
-              "bottom_right"}                                   },
-    },
-        1000
-    );
-
-    ImGui::Spacing();
-    drawSection(
-        "Colours",
-        {
-            {"Name colour",            "colors.name",           Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Facing colour",          "colors.facing",         Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Type id colour",         "colors.identifier",     Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Translation key colour", "colors.translationKey", Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"X colour",               "colors.x",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Y colour",               "colors.y",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Z colour",               "colors.z",              Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Distance colour",        "colors.distance",       Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Label colour",           "colors.label",          Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Value colour",           "colors.value",          Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-            {"Health colour",          "colors.health",         Kind::Enum, 0.0f, 0.0f, false, colorChoices()},
-    },
-        1100
-    );
-
-    ImGui::EndChild();
-    ImGui::EndGroup();
 
     // ---------- footer ---------------------------------------------------
     if (!status.empty()) {

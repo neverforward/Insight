@@ -103,20 +103,6 @@ public:
     /// content, so it can use ImGui freely.
     void setWindowDrawer(std::function<void()> drawer);
 
-    /// Draws the *current* HUD content (same runs, colours, shadow and font as
-    /// the on-screen panel) into the given rectangle - the configuration
-    /// screen's preview uses this so it shows the real display instead of a
-    /// re-implementation. `scale` multiplies the HUD font size.
-    static void drawContentPreview(
-        float              x,
-        float              y,
-        float              width,
-        float              height,
-        float              scale,
-        std::string const& anchor,
-        float              offsetX,
-        float              offsetY
-    );
 
     /// While this is true the game window procedure swallows mouse/key messages,
     /// so the configuration screen owns the input (modal).

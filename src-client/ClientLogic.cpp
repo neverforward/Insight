@@ -1075,7 +1075,6 @@ void ClientLogic::onRender(ll::event::render::BeforeUIRenderEvent& event) {
             }
         }
         ui.setLocale(lang);
-        ui.setPreviewText(mText);
     }
     // Hotkey context (see the top of this file). Published before the panel's own
     // switches are read: the key that turns the panel back on has to work while it is
