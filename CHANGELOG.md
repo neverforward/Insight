@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   composition on this client (the game window produces none), which is why a plain input field could
   only take ASCII. Enter, Tab or a click elsewhere ends the edit and saves it; Esc leaves the field
   without writing.
+- A note block reports its note. The pitch is the block actor's own byte (0 up to 24, two octaves from
+  F#3), shown the way a player reads it - `F#4 (12/24)` - with the raw value beside it for anyone who
+  counts in semitones. The block's state table never carried it, which is why the note block used to
+  report nothing at all.
 
 ### Changed
 - The configuration screen and the server's `/insight gui` menu group their rows by what they

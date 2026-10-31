@@ -42,6 +42,23 @@ The artifacts are written to `bin/Insight/`.
 **Both targets have to build with no warnings at all.** The project compiles with `/W4` (plus a short
 list of disabled warnings that come from the engine headers), and a warning is treated as a defect, not
 as noise. If a new warning appears, fix the code rather than adding a suppression.
+### Tests
+
+Tests are written with **gtest**, in the layout the upstream project uses: `src-test/common` for the
+tests that do not need a side, `src-test/server` and `src-test/client` for the ones that do. They live
+in their own binary, so a test run never needs a game:
+
+```bash
+xmake f -y -p windows -a x64 -m debug --tests=y --target_type=server
+xmake build test
+xmake run test
+```
+
+A new feature needs a test when some of its logic is reachable without the engine. Keep that part (a
+lookup table, a formatting rule, a decision) in a header that includes no engine headers - the way
+`src/NoteNames.h` does - and test that. Configure release again, without `--tests=y`, before building
+the mod itself.
+
 
 ## Making a change
 

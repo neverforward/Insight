@@ -1,5 +1,7 @@
 #include "Extras.h"
 
+#include "NoteNames.h"
+
 #include <algorithm>
 #include <array>
 #include <bitset>
@@ -56,6 +58,7 @@
 #include "mc/world/level/block/actor/ItemFrameBlockActor.h"
 #include "mc/world/level/block/actor/JukeboxBlockActor.h"
 #include "mc/world/level/block/actor/LecternBlockActor.h"
+#include "mc/world/level/block/actor/NoteBlockActor.h"
 #include "mc/world/level/block/actor/PistonBlockActor.h"
 #include "mc/world/level/block/actor/PistonState.h"
 #include "mc/world/level/block/actor/ShelfBlockActor.h"
@@ -1288,6 +1291,27 @@ void blockActorLines(
         return;
     }
 
+    if (opt.misc && type == "minecraft:noteblock") {
+        // The pitch is the actor's own byte (0..24, F#3 up to F#5). The state tables never carried it -
+        // which is why the note block used to report nothing at all - and the actor is the one place
+        // that has it. The block's own type name decides this, not the actor's enum: the note block's
+        // enumerator in BlockActorType is not documented, and gating on the block cannot pick up
+        // another actor that happens to share a number.
+        logOnce(
+            Insight::getInstance().getSelf().getLogger(),
+            "noteblock",
+            pos,
+            "actorType=" + std::to_string(static_cast<int>(be->getType()))
+        );
+        auto const* noteBlock = static_cast<NoteBlockActor const*>(be);
+        int const   note      = static_cast<int>(noteBlock->mNote);
+        if (char const* name = noteBlockName(note); name != nullptr) {
+            lines.push_back(
+                textLine(langCode, "Note", std::string(name) + " (" + std::to_string(note) + "/24)")
+            );
+        }
+        return;
+    }
     if (opt.banner && be->getType() == BlockActorType::Banner) {
         auto const* banner = static_cast<BannerBlockActor const*>(be);
         // 26.40 turned getPatternCount() into a static that expects a tag; the

@@ -8,12 +8,22 @@ option("target_type")
     set_values("server", "client")
 option_end()
 
+option("tests")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable tests")
+option_end()
+
 -- add_requires("levilamina x.x.x") for a specific version
 -- add_requires("levilamina develop") to use develop version
 -- please note that you should add bdslibrary yourself if using dev version
 add_requires("levilamina 26.51.5", {configs = {target_type = get_config("target_type")}})
 
 add_requires("levibuildscript")
+
+if has_config("tests") then
+    add_requires("gtest")
+end
 
 -- ImGui HUD overlay (client only): Dear ImGui + minhook for the DXGI
 -- Present hook that renders the info panel with a CJK-capable font. The
@@ -85,3 +95,29 @@ target("Insight")
             cprint("${bright green}[Mod Packer]: ${reset}language files -> " .. outdir)
         end
     end)
+
+-- Tests (LeviLamina's layout: src-test/common plus src-test/<side>, gtest, --tests=y):
+--   xmake f -m debug --tests=y -y && xmake build InsightTests && xmake run InsightTests
+-- Kept out of the mod target: gtest supplies its own main(), and a test run should not need a game.
+target("test")
+    set_kind("binary")
+    set_default(false)
+    set_languages("c++20")
+    set_symbols("debug")
+    add_packages("gtest")
+    add_includedirs("src")
+    add_includedirs("src-test/common")
+    add_files("src-test/common/**.cpp")
+    -- The side's own tests are optional: src-test/<side> may be empty until the first one is written,
+    -- and an empty glob would only produce a warning.
+    local target_type = get_config("target_type") or "server"
+    local side_dir     = path.join("src-test", target_type)
+    if os.isdir(side_dir) and #os.files(path.join(side_dir, "**.cpp")) > 0 then
+        add_includedirs(side_dir)
+        add_files(path.join(side_dir, "**.cpp"))
+    end
+    if is_plat("windows") then
+        add_defines("NOMINMAX", "UNICODE")
+        add_cxflags("/utf-8", "/W4", {tools = {"clang_cl"}})
+        set_toolchains("clang-cl")
+    end
