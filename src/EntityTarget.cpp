@@ -4,6 +4,8 @@
 #include <cmath>
 
 #include "mc/world/actor/ActorCategory.h"
+#include "mc/world/actor/ActorType.h"
+#include "mc/world/actor/item/ItemActor.h"
 #include "mc/world/actor/Mob.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/attribute/AttributeInstance.h"
@@ -111,6 +113,20 @@ std::string entityDisplayName(Actor const* actor, std::string const& langCode) {
     auto const& tag = actor->getNameTag();
     if (!tag.empty()) {
         return tag;
+    }
+    // A dropped item is first of all an item: name it after the stack it holds, not after the
+    // generic "item" entity type.
+    if (actor->isType(ActorType::ItemEntity)) {
+        try {
+            auto const& stack = static_cast<ItemActor const*>(actor)->item();
+            if (!stack.isNull()) {
+                std::string const  itemKey = stack.getDescriptionId();
+                std::string const  named   = resolveDisplayName(itemKey, langCode);
+                if (!named.empty() && named != itemKey) {
+                    return named;
+                }
+            }
+        } catch (...) {}
     }
     std::string key       = "entity." + shortId(actor->getTypeName());
     std::string localized = resolveDisplayName(key, langCode);

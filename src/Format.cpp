@@ -23,8 +23,11 @@ LookInfo makeBlockLookInfo(RaycastResult const& hit, std::string const& langCode
     info.distance  = hit.distance;
 
     // name resolution chain: engine i18n -> "<key>.name" -> vanilla .lang
-    // file for `langCode` -> raw key (see resolveDisplayName)
-    std::string name = resolveDisplayName(hit.descriptionId, langCode);
+    // file for `langCode` -> raw key (see resolveDisplayName). The item form of the block is asked
+    // first: that is the name the player sees in the inventory, and the tables carry it more
+    // reliably than the legacy tile id.
+    std::string const& nameKey = hit.itemDescriptionId.empty() ? hit.descriptionId : hit.itemDescriptionId;
+    std::string        name    = resolveDisplayName(nameKey, langCode);
     info.blockName   = name.empty() ? (hit.descriptionId.empty() ? hit.typeName : hit.descriptionId) : name;
     return info;
 }

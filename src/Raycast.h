@@ -16,7 +16,8 @@ struct RaycastResult {
     BlockPos    pos;            // integer coordinates of the hit block
     std::string typeName;       // e.g. "minecraft:stone"
     std::string descriptionId;  // e.g. "tile.stone.stone"
-    double      distance = 0.0; // distance from `from` to the hit point
+    std::string itemDescriptionId; // the block's item form, e.g. "item.stone" ("" when it has none)
+    double      distance = 0.0;    // distance from `from` to the hit point
 };
 
 // Cast a ray from `from` along the normalized `dir` through the blocks of `region`, honouring what
@@ -25,7 +26,7 @@ struct RaycastResult {
 // boundary. Air blocks are transparent; when `passLiquids` is true water and lava are too. Returns
 // nothing when the ray reaches `maxDistance` without touching anything.
 [[nodiscard]] std::optional<RaycastResult> raycastToBlock(
-    BlockSource const& region,
+    BlockSource& region,
     Vec3 const&        from,
     Vec3 const&        dir,
     double             maxDistance,

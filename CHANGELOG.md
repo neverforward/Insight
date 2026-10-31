@@ -53,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`Preview`, `Nothing under the crosshair`) are gone from `lang/` with it.
 
 ### Fixed
+- Blocks are named the way the player knows them: the panel asks for the block's item form first
+  (`item.<name>`, what the inventory shows) and translates that key, instead of guessing the item key
+  out of the legacy `tile.<name>` id. A dropped item is named after the stack it holds rather than
+  after the generic item entity, for the same reason - the engine's tables carry the names the
+  inventory shows, and those are item keys.
 - The panel picks the block by what that block actually looks like, not by the cell it sits in. A
   torch, a fence post, a flower, a button or a slab is now hit where its own outline is, and a
   crosshair aimed at the empty part of its cell goes past it to whatever stands behind - the ray used

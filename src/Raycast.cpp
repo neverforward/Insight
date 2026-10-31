@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "mc/world/item/ItemInstance.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/ShapeType.h"
 #include "mc/world/level/block/Block.h"
@@ -29,7 +30,7 @@ double length(Vec3 const& v) {
 } // namespace
 
 std::optional<RaycastResult> raycastToBlock(
-    BlockSource const& region,
+    BlockSource& region,
     Vec3 const&        from,
     Vec3 const&        dir,
     double             maxDistance,
@@ -97,6 +98,15 @@ std::optional<RaycastResult> raycastToBlock(
     result.pos           = pos;
     result.typeName      = block.getTypeName();
     result.descriptionId = block.getDescriptionId();
+    // The item the block turns into is what the player sees named in the inventory, and the engine's
+    // tables are keyed by that item form far more reliably than by the legacy tile id.
+    try {
+        ItemInstance const item = block.asItemInstance(region, pos, false);
+        if (!item.isNull()) {
+            result.itemDescriptionId = item.getDescriptionId();
+        }
+    } catch (...) {}
+
     result.distance      = length(Vec3{hit.mPos.x - from.x, hit.mPos.y - from.y, hit.mPos.z - from.z});
     return result;
 }
