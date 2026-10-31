@@ -2,8 +2,11 @@
 
 #include <cmath>
 
+#include "mc/world/level/BlockSource.h"
+#include "mc/world/level/ShapeType.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/material/Material.h"
+#include "mc/world/phys/HitResult.h"
 
 namespace insight {
 
@@ -19,62 +22,83 @@ bool isLiquidBlock(Block const& block) {
 
 namespace {
 
-// floor to the block grid of a float component
-constexpr int toInt(double v) { return static_cast<int>(std::floor(v)); }
+double length(Vec3 const& v) {
+    return std::sqrt(static_cast<double>(v.x) * v.x + static_cast<double>(v.y) * v.y + static_cast<double>(v.z) * v.z);
+}
 
 } // namespace
 
 std::optional<RaycastResult> raycastToBlock(
-    IConstBlockSource const& region,
-    Vec3 const&              from,
-    Vec3 const&              dir,
-    double                   maxDistance,
-    bool                     passLiquids
+    BlockSource const& region,
+    Vec3 const&        from,
+    Vec3 const&        dir,
+    double             maxDistance,
+    bool               passLiquids
 ) {
-    // normalize
-    double len = std::sqrt(
-        static_cast<double>(dir.x) * dir.x + static_cast<double>(dir.y) * dir.y + static_cast<double>(dir.z) * dir.z
-    );
+    double const len = length(dir);
     if (len < 1e-6) {
         return std::nullopt;
     }
-    double stepX = static_cast<double>(dir.x) / len;
-    double stepY = static_cast<double>(dir.y) / len;
-    double stepZ = static_cast<double>(dir.z) / len;
+    double const reach = maxDistance > 0 ? maxDistance : 1.0;
+    Vec3 const   unit{
+        static_cast<float>(static_cast<double>(dir.x) / len),
+        static_cast<float>(static_cast<double>(dir.y) / len),
+        static_cast<float>(static_cast<double>(dir.z) / len)
+    };
+    Vec3 const to{
+        static_cast<float>(static_cast<double>(from.x) + static_cast<double>(unit.x) * reach),
+        static_cast<float>(static_cast<double>(from.y) + static_cast<double>(unit.y) * reach),
+        static_cast<float>(static_cast<double>(from.z) + static_cast<double>(unit.z) * reach)
+    };
 
-    // march along the ray at a sub-block resolution (cheap, robust)
-    constexpr double kStep = 0.2;
-    double           maxT  = maxDistance > 0 ? maxDistance : 1.0;
-    double           t     = kStep; // skip the voxel containing the eye position
-    for (; t <= maxT + 1e-9; t += kStep) {
-        double px = static_cast<double>(from.x) + stepX * t;
-        double py = static_cast<double>(from.y) + stepY * t;
-        double pz = static_cast<double>(from.z) + stepZ * t;
-
-        BlockPos pos(toInt(px), toInt(py), toInt(pz));
-
-        // If we left the loaded region, stop scanning (keeps the ray sane in
-        // the void or at the world border).
-        if (!region.hasChunksAt(pos, 0, false)) {
-            return std::nullopt;
-        }
-        auto const& block = region.getBlock(pos);
+    // A block counts as something to hit when it is not air, and when its liquid-ness does not make
+    // it see-through for this player's settings.
+    auto const checkBlock = [passLiquids](BlockSource const&, Block const& block, bool) {
         if (block.isAir()) {
-            continue;
+            return false;
         }
-        std::string typeName = block.getTypeName();
-        if (passLiquids && isLiquidBlock(block)) {
-            continue;
-        }
-        RaycastResult res;
-        res.hitBlock      = true;
-        res.pos           = pos;
-        res.typeName      = std::move(typeName);
-        res.descriptionId = block.getDescriptionId();
-        res.distance      = t;
-        return res;
+        return passLiquids ? !isLiquidBlock(block) : true;
+    };
+
+    // The engine's own pick, with the outline shapes of each block: this is what makes a torch, a
+    // fence post, a flower or a button something the ray can pass beside. Marching the ray by hand
+    // and taking the first non-air cell treated every block as a full cube, so looking at the gap
+    // next to a torch still reported the torch.
+    HitResult const hit = region.clip(
+        from,
+        to,
+        false,
+        ShapeType::Outline,
+        static_cast<int>(reach) + 1,
+        false,
+        false,
+        nullptr,
+        checkBlock,
+        false
+    );
+    if (hit.mType != HitResultType::Tile) {
+        return std::nullopt;
     }
-    return std::nullopt;
+
+    BlockPos const pos{hit.mBlock.x, hit.mBlock.y, hit.mBlock.z};
+    // The engine's clip can name the cell above the aimed one for some shapes; ask that block itself
+    // whether the ray meets its outline, and keep the answer only when it agrees.
+    Block const& block = region.getBlock(pos);
+    if (block.isAir()) {
+        return std::nullopt;
+    }
+    HitResult const own = block.clip(region, pos, from, to, ShapeType::Outline, {});
+    if (own.mType != HitResultType::Tile) {
+        return std::nullopt;
+    }
+
+    RaycastResult result;
+    result.hitBlock      = true;
+    result.pos           = pos;
+    result.typeName      = block.getTypeName();
+    result.descriptionId = block.getDescriptionId();
+    result.distance      = length(Vec3{hit.mPos.x - from.x, hit.mPos.y - from.y, hit.mPos.z - from.z});
+    return result;
 }
 
 } // namespace insight

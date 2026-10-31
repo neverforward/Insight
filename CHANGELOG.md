@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   copy only ever disagreed with what was on screen. The two messages it needed
   (`Preview`, `Nothing under the crosshair`) are gone from `lang/` with it.
 
+### Fixed
+- The panel picks the block by what that block actually looks like, not by the cell it sits in. A
+  torch, a fence post, a flower, a button or a slab is now hit where its own outline is, and a
+  crosshair aimed at the empty part of its cell goes past it to whatever stands behind - the ray used
+  to be marched through the grid and stop at the first cell that was not air, which made every block
+  a full cube. It reads the same outline shapes the game's own pick uses, and asks the hit block to
+  confirm the hit, because the engine's clip can name the cell above the aimed one for some shapes.
+
 ## [0.5.0] - 2026-10-25
 ### Added
 - A furnace, blast furnace and smoker report `Time left` and `Cook progress` again, now read from a
