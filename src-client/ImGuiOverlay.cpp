@@ -12,6 +12,8 @@
 
 #include "ImGuiOverlay.h"
 
+#include "ImeField.h"
+
 #include <Windows.h>
 
 // RenderDragon ships a very recent d3d12.h that renames legacy structs;
@@ -215,7 +217,15 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     default:
         break;
     }
-    if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && wParam == FALSE)) {
+    if (ImeField::active()) {
+        // The native input field is a window of its own and takes the focus while it is up. The game
+        // must not read that as "the player left the window": it would pause, drop the cursor and
+        // take the focus straight back.
+        if (message == WM_KILLFOCUS || message == WM_ACTIVATEAPP
+            || (message == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE)) {
+            return 0;
+        }
+    } else if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && wParam == FALSE)) {
         // never keep the pointer while another window is in front
         releaseMenuCursor();
         ::ClipCursor(nullptr);
@@ -919,6 +929,9 @@ void render(IDXGISwapChain* swapChain) {
         ImGui_ImplWin32_NewFrame();
         ImGui_ImplDX11_NewFrame();
         ImGui::NewFrame();
+        // the slowest watchdog of the native text field: this runs whether or not the screen is
+        // open, so a field whose screen went away is closed here
+        ImeField::tick();
         // The configuration screen is modal and shows the panel as its own
         // preview, so the real one is not drawn underneath it as well.
         if (!menuOpen && (wantVisible || gPanelFade > 0.0f)) {
@@ -1205,12 +1218,17 @@ void ImGuiOverlay::setContent(Content content) {
     gContent = std::move(content);
 }
 
+void* ImGuiOverlay::gameWindow() { return static_cast<void*>(gGameWindow); }
+
 void ImGuiOverlay::setWindowDrawer(std::function<void()> drawer) {
     std::lock_guard lock(gDrawerMutex);
     gWindowDrawer = std::move(drawer);
 }
 
 void ImGuiOverlay::setInputCaptured(bool captured) {
+    if (!captured) {
+        ImeField::end(); // the field belongs to the screen that opened it
+    }
     if (gInputCaptured.exchange(captured, std::memory_order_acq_rel) == captured) {
         return;
     }

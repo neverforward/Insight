@@ -107,6 +107,9 @@ public:
     /// While this is true the game window procedure swallows mouse/key messages,
     /// so the configuration screen owns the input (modal).
     static void setInputCaptured(bool captured);
+
+    /// The game's top-level window, for code that needs a native window of its own.
+    [[nodiscard]] static void* gameWindow();
 };
 
 } // namespace insight

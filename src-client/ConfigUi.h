@@ -96,6 +96,7 @@ private:
     int                                           mTab = 0;
     std::string                                   mActiveSlider;
     std::string                                   mActiveText;
+    std::string                                   mImeRow;
     // 0 = open screen, 1 = toggle info. Atomic because wantsKeyboard() is read from the
     // game thread while the screen sets it on the render thread.
     std::atomic<int> mCapturingKey{-1};

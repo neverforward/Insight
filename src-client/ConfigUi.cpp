@@ -1,5 +1,7 @@
 #include "ConfigUi.h"
 
+#include "ImeField.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -804,6 +806,11 @@ void ConfigUi::draw() {
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
     );
 
+    // the native text field needs the game window to place itself, and a tick to notice the
+    // screen closing while it is up
+    ImeField::setOwnerWindow(ImGuiOverlay::gameWindow());
+    ImeField::tick();
+
     // the languages this mod ships messages for, plus "auto" (read once)
     std::vector<std::string> const languageChoices = availableLanguages();
 
@@ -883,26 +890,45 @@ void ConfigUi::draw() {
             break;
         }
         case Kind::Text: {
-            // one buffer per row, refilled from the config whenever the row is not the one being
-            // typed into: this is what makes the field usable at all, and having one per row is what
-            // lets several text rows be visible at once
+            // One buffer per row, refilled from the config whenever the row is not the one being
+            // edited - that is what makes the field usable, and what lets several text rows be on
+            // screen at once.
             auto& buffer = mText[row.option];
-            if (mActiveText != row.option) {
+            bool const editingHere = ImeField::belongsTo(buffer.data());
+            if (!editingHere && mActiveText != row.option) {
                 std::snprintf(buffer.data(), buffer.size(), "%s", currentValueText(row, locale).c_str());
             }
-            if (row.multiline) {
+            if (editingHere) {
+                // The native control owns the text and the caret; this is only what the field looks
+                // like while it does. A real input field here would fight it for the buffer.
+                static char lookAlike[1] = "";
+                ImGui::InputText("##value", lookAlike, sizeof(lookAlike), ImGuiInputTextFlags_ReadOnly);
+            } else if (row.multiline) {
                 ImGui::InputTextMultiline("##value", buffer.data(), buffer.size(), ImVec2(-1.0f, 84.0f));
             } else {
                 ImGui::InputText("##value", buffer.data(), buffer.size());
             }
-            if (ImGui::IsItemActivated()) {
-                mActiveText = row.option;
-            }
-            if (ImGui::IsItemDeactivated() && mActiveText == row.option) {
-                mActiveText.clear();
-            }
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                queueEdit(row.option, buffer.data());
+
+            ImVec2 const itemMin = ImGui::GetItemRectMin();
+            ImVec2 const itemMax = ImGui::GetItemRectMax();
+            if (editingHere) {
+                ImeField::follow(itemMin, itemMax);
+                std::snprintf(buffer.data(), buffer.size(), "%s", ImeField::value());
+                mImeRow = row.option;
+                if (!ImeField::active()) {
+                    // the edit ended (Enter, Esc, a click elsewhere): save what it produced
+                    queueEdit(row.option, buffer.data());
+                    mImeRow.clear();
+                    mActiveText.clear();
+                }
+            } else if (!row.multiline) {
+                // clicking a text field hands it to the native control, where the IME works: this
+                // client gives ImGui no composition at all, so it could never take Chinese itself
+                bool const clicked = ImGui::IsItemActivated()
+                                  || (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left));
+                if (clicked) {
+                    ImeField::begin(tr(locale, row.label).c_str(), buffer.data(), buffer.size(), itemMin, itemMax);
+                }
             }
             break;
         }

@@ -63,7 +63,7 @@ target("Insight")
         add_defines("INSIGHT_TARGET_CLIENT")
         add_includedirs("src-client")
         add_packages("imgui", "minhook")
-        add_syslinks("user32", "d3d11", "d3d12", "dxgi")
+        add_syslinks("user32", "d3d11", "d3d12", "dxgi", "imm32")
         add_headerfiles("src/**.h", "src-client/**.h")
         add_files("src/**.cpp", "src-client/**.cpp")
     else

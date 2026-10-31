@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      match the tag, e.g. tag `v1.0.0` -> `## [1.0.0] - YYYY-MM-DD`. -->
 
 ## [Unreleased]
+### Added
+- Text fields in the configuration screen take Chinese, Japanese and Korean input. Clicking one puts a
+  native text box exactly on top of it, so the system IME works there the way it does anywhere else -
+  candidate window included - and what is typed lands in the field as it goes. ImGui never sees an IME
+  composition on this client (the game window produces none), which is why a plain input field could
+  only take ASCII. Enter, Tab or a click elsewhere ends the edit and saves it; Esc leaves the field
+  without writing.
+
 ### Changed
 - The configuration screen and the server's `/insight gui` menu group their rows by what they
   describe, instead of keeping "extras" sections of their own that split one subject in two. On the
